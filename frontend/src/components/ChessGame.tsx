@@ -5,6 +5,7 @@ import ModelSelector from './ModelSelector';
 
 const MODELS = [
   'claude-opus-4-20250514',
+  'claude-sonnet-4-20250514',
   'o3',
   'gemini-2.5-pro-preview-05-06',
   'grok-3-mini'
@@ -84,8 +85,14 @@ const ChessGame: React.FC = () => {
                 return prevState;
               }
 
-              // Create new game from current state and try to make the move
-              const newGame = new Chess(prevState.game.fen());
+              // Create new game and replay history to preserve move history
+              const newGame = new Chess();
+              const history = prevState.game.history();
+              
+              // Replay all moves to preserve history
+              for (const move of history) {
+                newGame.move(move);
+              }
               
               console.log('Before move - History:', prevState.game.history());
               console.log('Making move:', data.move);
@@ -311,122 +318,120 @@ const ChessGame: React.FC = () => {
           isGameStarted={gameState.isGameStarted}
         />
 
-        {gameState.isGameStarted && (
-          <div style={{ 
-            minWidth: '300px',
-            maxWidth: '400px',
-            border: '2px solid #8b4513',
-            borderRadius: '8px',
-            backgroundColor: '#f8f8f8'
+        <div style={{ 
+          minWidth: '300px',
+          maxWidth: '400px',
+          border: '2px solid #8b4513',
+          borderRadius: '8px',
+          backgroundColor: '#f8f8f8'
+        }}>
+          <div style={{
+            backgroundColor: '#8b4513',
+            color: 'white',
+            padding: '12px',
+            textAlign: 'center',
+            fontWeight: 'bold',
+            fontSize: '16px'
           }}>
-            <div style={{
-              backgroundColor: '#8b4513',
-              color: 'white',
-              padding: '12px',
-              textAlign: 'center',
-              fontWeight: 'bold',
-              fontSize: '16px'
-            }}>
-              Move History
-            </div>
-            
-            <div style={{ 
-              maxHeight: '500px', 
-              overflowY: 'auto',
-              padding: '10px'
-            }}>
-              {gameState.game.history().length === 0 ? (
-                <p style={{ textAlign: 'center', color: '#666', margin: '20px 0' }}>
-                  No moves yet
-                </p>
-              ) : (
-                <table style={{ 
-                  width: '100%', 
-                  borderCollapse: 'collapse',
-                  fontSize: '14px'
-                }}>
-                  <thead>
-                    <tr>
-                      <th style={{ 
-                        border: '1px solid #ddd', 
-                        padding: '8px', 
-                        backgroundColor: '#e8e8e8',
-                        textAlign: 'center',
-                        width: '20%'
-                      }}>
-                        #
-                      </th>
-                      <th style={{ 
-                        border: '1px solid #ddd', 
-                        padding: '8px', 
-                        backgroundColor: '#e8e8e8',
-                        textAlign: 'center',
-                        width: '40%'
-                      }}>
-                        White
-                      </th>
-                      <th style={{ 
-                        border: '1px solid #ddd', 
-                        padding: '8px', 
-                        backgroundColor: '#e8e8e8',
-                        textAlign: 'center',
-                        width: '40%'
-                      }}>
-                        Black
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Array.from({ length: Math.ceil(gameState.game.history().length / 2) }, (_, i) => {
-                      const moveNumber = i + 1;
-                      const whiteMove = gameState.game.history()[i * 2];
-                      const blackMove = gameState.game.history()[i * 2 + 1];
-                      
-                      return (
-                        <tr key={moveNumber}>
-                          <td style={{ 
-                            border: '1px solid #ddd', 
-                            padding: '6px', 
-                            textAlign: 'center',
-                            fontWeight: 'bold'
-                          }}>
-                            {moveNumber}
-                          </td>
-                          <td style={{ 
-                            border: '1px solid #ddd', 
-                            padding: '6px', 
-                            textAlign: 'center',
-                            fontFamily: 'monospace'
-                          }}>
-                            {whiteMove || ''}
-                          </td>
-                          <td style={{ 
-                            border: '1px solid #ddd', 
-                            padding: '6px', 
-                            textAlign: 'center',
-                            fontFamily: 'monospace'
-                          }}>
-                            {blackMove || '...'}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
-            
-            <div style={{
-              padding: '10px',
-              borderTop: '1px solid #ddd',
-              backgroundColor: '#f0f0f0',
-              fontSize: '12px',
-              textAlign: 'center'
-            }}>
-              Total moves: {gameState.game.history().length}
-            </div>
+            Move History
           </div>
-        )}
+          
+          <div style={{ 
+            maxHeight: '500px', 
+            overflowY: 'auto',
+            padding: '10px'
+          }}>
+            {gameState.game.history().length === 0 ? (
+              <p style={{ textAlign: 'center', color: '#666', margin: '20px 0' }}>
+                No moves yet
+              </p>
+            ) : (
+              <table style={{ 
+                width: '100%', 
+                borderCollapse: 'collapse',
+                fontSize: '14px'
+              }}>
+                <thead>
+                  <tr>
+                    <th style={{ 
+                      border: '1px solid #ddd', 
+                      padding: '8px', 
+                      backgroundColor: '#e8e8e8',
+                      textAlign: 'center',
+                      width: '20%'
+                    }}>
+                      #
+                    </th>
+                    <th style={{ 
+                      border: '1px solid #ddd', 
+                      padding: '8px', 
+                      backgroundColor: '#e8e8e8',
+                      textAlign: 'center',
+                      width: '40%'
+                    }}>
+                      White
+                    </th>
+                    <th style={{ 
+                      border: '1px solid #ddd', 
+                      padding: '8px', 
+                      backgroundColor: '#e8e8e8',
+                      textAlign: 'center',
+                      width: '40%'
+                    }}>
+                      Black
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from({ length: Math.ceil(gameState.game.history().length / 2) }, (_, i) => {
+                    const moveNumber = i + 1;
+                    const whiteMove = gameState.game.history()[i * 2];
+                    const blackMove = gameState.game.history()[i * 2 + 1];
+                    
+                    return (
+                      <tr key={moveNumber}>
+                        <td style={{ 
+                          border: '1px solid #ddd', 
+                          padding: '6px', 
+                          textAlign: 'center',
+                          fontWeight: 'bold'
+                        }}>
+                          {moveNumber}
+                        </td>
+                        <td style={{ 
+                          border: '1px solid #ddd', 
+                          padding: '6px', 
+                          textAlign: 'center',
+                          fontFamily: 'monospace'
+                        }}>
+                          {whiteMove || ''}
+                        </td>
+                        <td style={{ 
+                          border: '1px solid #ddd', 
+                          padding: '6px', 
+                          textAlign: 'center',
+                          fontFamily: 'monospace'
+                        }}>
+                          {blackMove || '...'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+          
+          <div style={{
+            padding: '10px',
+            borderTop: '1px solid #ddd',
+            backgroundColor: '#f0f0f0',
+            fontSize: '12px',
+            textAlign: 'center'
+          }}>
+            Total moves: {gameState.game.history().length}
+          </div>
+        </div>
       </div>
     </div>
   );
