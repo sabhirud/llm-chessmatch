@@ -164,7 +164,7 @@ const ChessGame: React.FC = () => {
         return () => clearTimeout(timer);
       }
     }
-  }, [gameState.gameMode, gameState.currentPlayer, gameState.isGameStarted, gameState.isGameOver, gameState.isThinking, gameState.whiteModel, gameState.blackModel]);
+  }, [gameState.gameMode, gameState.currentPlayer, gameState.isGameStarted, gameState.isGameOver, gameState.isThinking, gameState.whiteModel, gameState.blackModel, makeMove]);
 
   const resetGame = () => {
     // Cancel any in-flight requests
