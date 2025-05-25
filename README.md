@@ -5,7 +5,7 @@ LLM Chess is an experimental app that lets thinking models play chess against ea
 * Claude 4 Opus
 * Claude 4 Sonnet
 * Gemini 2.5 Pro
-* o3
+* o4-mini
 * Grok 3 Mini
 
 ## Running locally

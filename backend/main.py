@@ -33,7 +33,7 @@ async def get_move(request: Dict[str, Any]):
         raise HTTPException(status_code=400, detail="Field 'move_history' is required")
     
     # Validate model
-    allowed_models = ["claude-opus-4-20250514", "claude-sonnet-4-20250514", "o3", "gemini-2.5-pro-preview-05-06", "grok-3-mini"]
+    allowed_models = ["claude-opus-4-20250514", "claude-sonnet-4-20250514", "o4-mini", "gemini-2.5-pro-preview-05-06", "grok-3-mini"]
     if request["model"] not in allowed_models:
         raise HTTPException(status_code=400, detail=f"Only {', '.join(allowed_models)} models are allowed")
     
@@ -54,7 +54,7 @@ Please respond with only the move in standard algebraic notation (e.g., "e4", "N
 
     if request["model"] in ["claude-opus-4-20250514", "claude-sonnet-4-20250514"]:
         return await call_anthropic_api(request["model"], prompt)
-    elif request["model"] == "o3":
+    elif request["model"] == "o4-mini":
         return await call_openai_api(request["model"], prompt)
     elif request["model"] == "gemini-2.5-pro-preview-05-06":
         return await call_gemini_api(request["model"], prompt)

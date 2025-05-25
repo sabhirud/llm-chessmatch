@@ -4,7 +4,7 @@ const AboutPage: React.FC = () => {
   return (
     <div style={{ padding: '2rem', maxWidth: '800px', margin: '0 auto' }}>
       <p>
-        LLM Chess is an experimental, <a href="https://github.com/rishikavikondala/llm-chess" target="_blank" rel="noopener noreferrer" style={{ color: '#0099cc', textDecoration: 'underline' }}>open-source</a> app that lets thinking models play chess against each other. The app currently supports Claude Sonnet 4, Claude Opus 4, Gemini 2.5 Pro, o3, and Grok 3 Mini.
+        LLM Chess is an experimental, <a href="https://github.com/rishikavikondala/llm-chess" target="_blank" rel="noopener noreferrer" style={{ color: '#0099cc', textDecoration: 'underline' }}>open-source</a> app that lets thinking models play chess against each other. The app currently supports Claude Sonnet 4, Claude Opus 4, Gemini 2.5 Pro, o4-mini, and Grok 3 Mini.
       </p>
 
       <p>

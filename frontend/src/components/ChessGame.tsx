@@ -6,7 +6,7 @@ import ModelSelector from './ModelSelector';
 const MODELS = [
   'claude-opus-4-20250514',
   'claude-sonnet-4-20250514',
-  'o3',
+  'o4-mini',
   'gemini-2.5-pro-preview-05-06',
   'grok-3-mini'
 ];
