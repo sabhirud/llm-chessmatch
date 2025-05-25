@@ -1,0 +1,434 @@
+import React, { useState, useCallback, useRef } from 'react';
+import { Chess } from 'chess.js';
+import ChessBoard from './ChessBoard';
+import ModelSelector from './ModelSelector';
+
+const MODELS = [
+  'claude-opus-4-20250514',
+  'o3',
+  'gemini-2.5-pro-preview-05-06',
+  'grok-3-mini'
+];
+
+interface GameState {
+  game: Chess;
+  isGameStarted: boolean;
+  isGameOver: boolean;
+  currentPlayer: 'white' | 'black';
+  whiteModel: string;
+  blackModel: string;
+  isThinking: boolean;
+  gameResult: string | null;
+  gameMode: 'auto' | 'manual';
+}
+
+const ChessGame: React.FC = () => {
+  const [gameState, setGameState] = useState<GameState>({
+    game: new Chess(),
+    isGameStarted: false,
+    isGameOver: false,
+    currentPlayer: 'white',
+    whiteModel: '',
+    blackModel: '',
+    isThinking: false,
+    gameResult: null,
+    gameMode: 'auto'
+  });
+
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const makeMove = useCallback(async (model: string, player: 'white' | 'black') => {
+    setGameState(prev => {
+      // Prevent duplicate calls
+      if (prev.isGameOver || prev.isThinking) {
+        return prev;
+      }
+
+      // Cancel any existing request
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+
+      // Create new AbortController for this request
+      abortControllerRef.current = new AbortController();
+
+      // Set thinking state and capture current state for API call
+      const currentFen = prev.game.fen();
+      const currentHistory = prev.game.history();
+      
+      console.log('Starting move for', player, 'with history:', currentHistory);
+
+      // Make API call
+      (async () => {
+        try {
+          const response = await fetch('http://localhost:8000/get_move', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: model,
+              game_state: currentFen,
+              move_history: currentHistory
+            }),
+            signal: abortControllerRef.current?.signal
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            
+            setGameState(prevState => {
+              // Double-check we're still in the right state
+              if (prevState.isGameOver || !prevState.isThinking) {
+                return prevState;
+              }
+
+              // Create new game from current state and try to make the move
+              const newGame = new Chess(prevState.game.fen());
+              
+              console.log('Before move - History:', prevState.game.history());
+              console.log('Making move:', data.move);
+              
+              try {
+                const move = newGame.move(data.move);
+                
+                if (move) {
+                  console.log('After move - History:', newGame.history());
+                  
+                  const isGameOver = newGame.isGameOver();
+                  let gameResult = null;
+                  
+                  if (isGameOver) {
+                    if (newGame.isCheckmate()) {
+                      gameResult = `${player === 'white' ? 'White' : 'Black'} wins by checkmate!`;
+                    } else if (newGame.isDraw()) {
+                      gameResult = 'Game ends in a draw!';
+                    }
+                  }
+
+                  return {
+                    ...prevState,
+                    game: newGame,
+                    currentPlayer: prevState.currentPlayer === 'white' ? 'black' : 'white',
+                    isGameOver,
+                    gameResult,
+                    isThinking: false
+                  };
+                } else {
+                  console.error('Invalid move returned:', data.move);
+                  return { ...prevState, isThinking: false };
+                }
+              } catch (moveError) {
+                console.error('Error making move:', data.move, moveError);
+                return { ...prevState, isThinking: false };
+              }
+            });
+          }
+        } catch (error) {
+          // Don't update state if the request was aborted
+          if (error instanceof Error && error.name === 'AbortError') {
+            console.log('Move request was cancelled');
+            return;
+          }
+          console.error('Error making move:', error);
+          setGameState(prevState => ({ ...prevState, isThinking: false }));
+        }
+      })();
+
+      return { ...prev, isThinking: true };
+    });
+  }, []);
+
+  const startGame = useCallback(() => {
+    if (!gameState.whiteModel || !gameState.blackModel) {
+      alert('Please select models for both white and black');
+      return;
+    }
+
+    setGameState(prev => ({
+      ...prev,
+      isGameStarted: true,
+      game: new Chess()
+    }));
+  }, [gameState.whiteModel, gameState.blackModel]);
+
+  // Auto-play when it's the next player's turn (only in auto mode)
+  React.useEffect(() => {
+    if (gameState.gameMode === 'auto' && gameState.isGameStarted && !gameState.isGameOver && !gameState.isThinking) {
+      const currentModel = gameState.currentPlayer === 'white' ? gameState.whiteModel : gameState.blackModel;
+      if (currentModel) {
+        const timer = setTimeout(() => {
+          makeMove(currentModel, gameState.currentPlayer);
+        }, 1000);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [gameState.gameMode, gameState.currentPlayer, gameState.isGameStarted, gameState.isGameOver, gameState.isThinking, gameState.whiteModel, gameState.blackModel]);
+
+  const resetGame = () => {
+    // Cancel any in-flight requests
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+
+    setGameState({
+      game: new Chess(),
+      isGameStarted: false,
+      isGameOver: false,
+      currentPlayer: 'white',
+      whiteModel: gameState.whiteModel,
+      blackModel: gameState.blackModel,
+      isThinking: false,
+      gameResult: null,
+      gameMode: gameState.gameMode
+    });
+  };
+
+  const nextMove = () => {
+    if (gameState.gameMode === 'manual' && gameState.isGameStarted && !gameState.isGameOver && !gameState.isThinking) {
+      const currentModel = gameState.currentPlayer === 'white' ? gameState.whiteModel : gameState.blackModel;
+      if (currentModel) {
+        makeMove(currentModel, gameState.currentPlayer);
+      }
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
+      <div style={{ display: 'flex', gap: '40px', alignItems: 'center' }}>
+        <ModelSelector
+          label="White"
+          models={MODELS}
+          selectedModel={gameState.whiteModel}
+          onModelChange={(model) => setGameState(prev => ({ ...prev, whiteModel: model }))}
+          disabled={gameState.isGameStarted}
+        />
+        
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <label style={{ fontSize: '14px', color: '#666' }}>Mode:</label>
+            <select
+              value={gameState.gameMode}
+              onChange={(e) => setGameState(prev => ({ ...prev, gameMode: e.target.value as 'auto' | 'manual' }))}
+              disabled={gameState.isGameStarted}
+              style={{
+                padding: '5px 10px',
+                fontSize: '14px',
+                border: '1px solid #ccc',
+                borderRadius: '4px',
+                backgroundColor: gameState.isGameStarted ? '#f5f5f5' : 'white'
+              }}
+            >
+              <option value="auto">Auto</option>
+              <option value="manual">Manual</option>
+            </select>
+          </div>
+          
+          {!gameState.isGameStarted ? (
+            <button
+              onClick={startGame}
+              style={{
+                padding: '10px 20px',
+                fontSize: '16px',
+                backgroundColor: '#4CAF50',
+                color: 'white',
+                border: 'none',
+                borderRadius: '5px',
+                cursor: 'pointer'
+              }}
+            >
+              Start Game
+            </button>
+          ) : (
+            <div style={{ display: 'flex', gap: '10px' }}>
+              {gameState.gameMode === 'manual' && (
+                <button
+                  onClick={nextMove}
+                  disabled={gameState.isGameOver || gameState.isThinking}
+                  style={{
+                    padding: '10px 15px',
+                    fontSize: '14px',
+                    backgroundColor: gameState.isGameOver || gameState.isThinking ? '#ccc' : '#2196F3',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '5px',
+                    cursor: gameState.isGameOver || gameState.isThinking ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  Next Move
+                </button>
+              )}
+              <button
+                onClick={resetGame}
+                style={{
+                  padding: '10px 20px',
+                  fontSize: '16px',
+                  backgroundColor: '#f44336',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '5px',
+                  cursor: 'pointer'
+                }}
+              >
+                Reset Game
+              </button>
+            </div>
+          )}
+        </div>
+
+        <ModelSelector
+          label="Black"
+          models={MODELS}
+          selectedModel={gameState.blackModel}
+          onModelChange={(model) => setGameState(prev => ({ ...prev, blackModel: model }))}
+          disabled={gameState.isGameStarted}
+        />
+      </div>
+
+      <div style={{ textAlign: 'center' }}>
+        {gameState.isThinking && (
+          <p style={{ fontSize: '18px', color: '#666' }}>
+            {gameState.currentPlayer === 'white' ? gameState.whiteModel : gameState.blackModel} is thinking...
+          </p>
+        )}
+        {gameState.gameResult && (
+          <p style={{ fontSize: '20px', fontWeight: 'bold', color: '#4CAF50' }}>
+            {gameState.gameResult}
+          </p>
+        )}
+        {gameState.isGameStarted && !gameState.isGameOver && !gameState.isThinking && (
+          <p style={{ fontSize: '18px' }}>
+            Current turn: {gameState.currentPlayer === 'white' ? gameState.whiteModel : gameState.blackModel}
+          </p>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', gap: '30px', alignItems: 'flex-start' }}>
+        <ChessBoard 
+          game={gameState.game}
+          isGameStarted={gameState.isGameStarted}
+        />
+
+        {gameState.isGameStarted && (
+          <div style={{ 
+            minWidth: '300px',
+            maxWidth: '400px',
+            border: '2px solid #8b4513',
+            borderRadius: '8px',
+            backgroundColor: '#f8f8f8'
+          }}>
+            <div style={{
+              backgroundColor: '#8b4513',
+              color: 'white',
+              padding: '12px',
+              textAlign: 'center',
+              fontWeight: 'bold',
+              fontSize: '16px'
+            }}>
+              Move History
+            </div>
+            
+            <div style={{ 
+              maxHeight: '500px', 
+              overflowY: 'auto',
+              padding: '10px'
+            }}>
+              {gameState.game.history().length === 0 ? (
+                <p style={{ textAlign: 'center', color: '#666', margin: '20px 0' }}>
+                  No moves yet
+                </p>
+              ) : (
+                <table style={{ 
+                  width: '100%', 
+                  borderCollapse: 'collapse',
+                  fontSize: '14px'
+                }}>
+                  <thead>
+                    <tr>
+                      <th style={{ 
+                        border: '1px solid #ddd', 
+                        padding: '8px', 
+                        backgroundColor: '#e8e8e8',
+                        textAlign: 'center',
+                        width: '20%'
+                      }}>
+                        #
+                      </th>
+                      <th style={{ 
+                        border: '1px solid #ddd', 
+                        padding: '8px', 
+                        backgroundColor: '#e8e8e8',
+                        textAlign: 'center',
+                        width: '40%'
+                      }}>
+                        White
+                      </th>
+                      <th style={{ 
+                        border: '1px solid #ddd', 
+                        padding: '8px', 
+                        backgroundColor: '#e8e8e8',
+                        textAlign: 'center',
+                        width: '40%'
+                      }}>
+                        Black
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Array.from({ length: Math.ceil(gameState.game.history().length / 2) }, (_, i) => {
+                      const moveNumber = i + 1;
+                      const whiteMove = gameState.game.history()[i * 2];
+                      const blackMove = gameState.game.history()[i * 2 + 1];
+                      
+                      return (
+                        <tr key={moveNumber}>
+                          <td style={{ 
+                            border: '1px solid #ddd', 
+                            padding: '6px', 
+                            textAlign: 'center',
+                            fontWeight: 'bold'
+                          }}>
+                            {moveNumber}
+                          </td>
+                          <td style={{ 
+                            border: '1px solid #ddd', 
+                            padding: '6px', 
+                            textAlign: 'center',
+                            fontFamily: 'monospace'
+                          }}>
+                            {whiteMove || ''}
+                          </td>
+                          <td style={{ 
+                            border: '1px solid #ddd', 
+                            padding: '6px', 
+                            textAlign: 'center',
+                            fontFamily: 'monospace'
+                          }}>
+                            {blackMove || '...'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            
+            <div style={{
+              padding: '10px',
+              borderTop: '1px solid #ddd',
+              backgroundColor: '#f0f0f0',
+              fontSize: '12px',
+              textAlign: 'center'
+            }}>
+              Total moves: {gameState.game.history().length}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default ChessGame;
