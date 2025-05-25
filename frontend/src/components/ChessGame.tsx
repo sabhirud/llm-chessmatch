@@ -61,7 +61,8 @@ const ChessGame: React.FC = () => {
       // Make API call
       (async () => {
         try {
-          const response = await fetch('http://localhost:8000/get_move', {
+          const backendUrl = process.env.REACT_APP_BACKEND_API_BASE_URL || 'http://localhost:8000';
+          const response = await fetch(`${backendUrl}/get_move`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
