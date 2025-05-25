@@ -33,7 +33,7 @@ const ChessGame: React.FC = () => {
     blackModel: '',
     isThinking: false,
     gameResult: null,
-    gameMode: 'auto'
+    gameMode: 'manual'
   });
 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -149,7 +149,7 @@ const ChessGame: React.FC = () => {
 
   const startGame = useCallback(() => {
     if (!gameState.whiteModel || !gameState.blackModel) {
-      alert('Please select models for both white and black');
+      alert('Please select models for both white and black.');
       return;
     }
 
@@ -189,7 +189,7 @@ const ChessGame: React.FC = () => {
       blackModel: gameState.blackModel,
       isThinking: false,
       gameResult: null,
-      gameMode: gameState.gameMode
+      gameMode: 'manual'
     });
   };
 
@@ -204,6 +204,11 @@ const ChessGame: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
+      {!gameState.isGameStarted && (
+        <p style={{ fontSize: '18px', color: '#666', textAlign: 'center', margin: '0 0 10px 0' }}>
+          Select models and click "Start Game" to begin
+        </p>
+      )}
       <div style={{ display: 'flex', gap: '40px', alignItems: 'center' }}>
         <ModelSelector
           label="White"

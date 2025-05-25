@@ -82,18 +82,6 @@ const ChessBoard: React.FC<ChessBoardProps> = ({ game, isGameStarted }) => {
       }}>
         FEN: {game.fen()}
       </div>
-      
-      {!isGameStarted && (
-        <div style={{
-          marginTop: '10px',
-          fontSize: '14px',
-          color: '#888',
-          textAlign: 'center',
-          fontStyle: 'italic'
-        }}>
-          Select models and click "Start Game" to begin
-        </div>
-      )}
     </div>
   );
 };

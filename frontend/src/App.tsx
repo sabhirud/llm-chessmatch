@@ -1,15 +1,24 @@
-import React from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import './App.css';
 import ChessGame from './components/ChessGame';
+import AboutPage from './components/AboutPage';
+import Navigation from './components/Navigation';
 
 function App() {
   return (
-    <div className="App">
-      <header className="App-header">
-        <h1>LLM Chess</h1>
-        <ChessGame />
-      </header>
-    </div>
+    <Router>
+      <div className="App">
+        <Navigation />
+        <Routes>
+          <Route path="/" element={
+            <header className="App-header">
+              <ChessGame />
+            </header>
+          } />
+          <Route path="/about" element={<AboutPage />} />
+        </Routes>
+      </div>
+    </Router>
   );
 }
 
