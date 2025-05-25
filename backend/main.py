@@ -8,18 +8,19 @@ from anthropic import Anthropic
 from google import genai
 
 app = FastAPI()
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-@app.post("/random-number")
-async def get_random_number():
-    return {"number": random.randint(1, 100)}
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "message": "API is operational"}
 
 @app.post("/get_move")
 async def get_move(request: Dict[str, Any]):
