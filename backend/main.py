@@ -47,10 +47,10 @@ async def get_move(request: Dict[str, Any]):
     
     prompt = f"""You are a chess AI. Given the current game state and move history, provide the next best move.
 
-Game State (FEN): {request["game_state"]}
-Move History: {move_history_str}
+    Game State (FEN): {request["game_state"]}
+    Move History: {move_history_str}
 
-Please respond with only the move in standard algebraic notation (e.g., "e4", "Nf3", "O-O", etc.)."""
+    Please respond with only the move in standard algebraic notation (e.g., "e4", "Nf3", "O-O", etc.)."""
 
     if request["model"] in ["claude-opus-4-20250514", "claude-sonnet-4-20250514"]:
         return await call_anthropic_api(request["model"], prompt)
@@ -158,7 +158,7 @@ async def call_xai_api(model: str, prompt: str):
         
         response = client.chat.completions.create(
             model=model,
-            reasoning_effort="high",
+            reasoning_effort="low",
             messages=[
                 {
                     "role": "system",
