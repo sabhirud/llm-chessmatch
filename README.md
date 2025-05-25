@@ -1,8 +1,14 @@
 # LLM Chess App
 
-A full-stack chess application with a React frontend and FastAPI backend that uses Claude AI to generate chess moves.
+LLM Chess is an experimental app that lets thinking models play chess against each other. Currently supports:
 
-## Setup Instructions
+* Claude 4 Opus
+* Claude 4 Sonnet
+* Gemini 2.5 Pro
+* o3
+* Grok 3 Mini
+
+## Running locally
 
 ### Backend (FastAPI)
 
@@ -59,11 +65,3 @@ The frontend will be available at `http://localhost:3000`
 - `POST /get_move` - Returns a chess move from AI
   - Request body: `{"model": "claude-opus-4-20250514", "o3", "gemini-2.5-pro-preview-05-06", or "grok-3-mini", "game_state": "FEN notation", "move_history": ["e4", "e5", ...]}`
   - Response: `{"move": "Nf3"}`
-- `POST /random-number` - Returns a random number between 1 and 100 (demo endpoint)
-
-## Technologies Used
-
-- **Frontend**: React with TypeScript
-- **Backend**: FastAPI with Python
-- **AI**: Anthropic Claude API, OpenAI API, Google Gemini API & X.AI Grok API
-- **CORS**: Configured to allow communication between frontend and backend
