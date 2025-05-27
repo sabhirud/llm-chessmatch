@@ -27,12 +27,21 @@ interface GameState {
     black: string[];
   };
   moveThinkingTokens: number[];
+  moveTimes: number[];
   drawOffer: {
     offered: boolean;
     offeredBy: 'white' | 'black' | null;
   };
   awaitingDrawResponse: boolean;
 }
+
+const formatTime = (milliseconds: number): string => {
+  if (milliseconds < 1000) {
+    return `${milliseconds}ms`;
+  } else {
+    return `${(milliseconds / 1000).toFixed(1)}s`;
+  }
+};
 
 const ChessGame: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>({
@@ -50,6 +59,7 @@ const ChessGame: React.FC = () => {
       black: []
     },
     moveThinkingTokens: [],
+    moveTimes: [],
     drawOffer: {
       offered: false,
       offeredBy: null
@@ -77,6 +87,7 @@ const ChessGame: React.FC = () => {
       // Set thinking state and capture current state for API call
       const currentFen = prev.game.fen();
       const currentHistory = prev.game.history();
+      const startTime = Date.now();
       
       console.log('Starting move for', player, 'with history:', currentHistory);
 
@@ -99,6 +110,8 @@ const ChessGame: React.FC = () => {
 
           if (response.ok) {
             const data = await response.json();
+            const endTime = Date.now();
+            const moveTime = endTime - startTime;
             
             setGameState(prevState => {
               // Double-check we're still in the right state
@@ -114,7 +127,8 @@ const ChessGame: React.FC = () => {
                   isGameOver: true,
                   gameResult: `${player === 'white' ? 'White' : 'Black'} resigned. ${winner} wins!`,
                   isThinking: false,
-                  moveThinkingTokens: [...prevState.moveThinkingTokens, data.thinking_tokens || 0]
+                  moveThinkingTokens: [...prevState.moveThinkingTokens, data.thinking_tokens || 0],
+                  moveTimes: [...prevState.moveTimes, moveTime]
                 };
               }
 
@@ -127,7 +141,8 @@ const ChessGame: React.FC = () => {
                   },
                   awaitingDrawResponse: true,
                   isThinking: false,
-                  moveThinkingTokens: [...prevState.moveThinkingTokens, data.thinking_tokens || 0]
+                  moveThinkingTokens: [...prevState.moveThinkingTokens, data.thinking_tokens || 0],
+                  moveTimes: [...prevState.moveTimes, moveTime]
                 };
               }
 
@@ -169,8 +184,9 @@ const ChessGame: React.FC = () => {
                       updatedCapturedPieces[capturedBy] = [...updatedCapturedPieces[capturedBy], move.captured];
                     }
 
-                    // Update thinking tokens
+                    // Update thinking tokens and move times
                     const updatedThinkingTokens = [...prevState.moveThinkingTokens, data.thinking_tokens || 0];
+                    const updatedMoveTimes = [...prevState.moveTimes, moveTime];
 
                     return {
                       ...prevState,
@@ -180,7 +196,8 @@ const ChessGame: React.FC = () => {
                       gameResult,
                       isThinking: false,
                       capturedPieces: updatedCapturedPieces,
-                      moveThinkingTokens: updatedThinkingTokens
+                      moveThinkingTokens: updatedThinkingTokens,
+                      moveTimes: updatedMoveTimes
                     };
                   } else {
                     console.error('Invalid move returned:', data.move);
@@ -228,6 +245,7 @@ const ChessGame: React.FC = () => {
       // Set thinking state and capture current state for API call
       const currentFen = prev.game.fen();
       const currentHistory = prev.game.history();
+      const startTime = Date.now();
       
       console.log('Getting draw response for', player, 'with history:', currentHistory);
 
@@ -250,6 +268,8 @@ const ChessGame: React.FC = () => {
 
           if (response.ok) {
             const data = await response.json();
+            const endTime = Date.now();
+            const moveTime = endTime - startTime;
             
             setGameState(prevState => {
               // Double-check we're still in the right state
@@ -257,8 +277,9 @@ const ChessGame: React.FC = () => {
                 return prevState;
               }
 
-              // Update thinking tokens
+              // Update thinking tokens and move times
               const updatedThinkingTokens = [...prevState.moveThinkingTokens, data.thinking_tokens || 0];
+              const updatedMoveTimes = [...prevState.moveTimes, moveTime];
 
               if (data.action === 'draw_accept') {
                 return {
@@ -271,7 +292,8 @@ const ChessGame: React.FC = () => {
                     offeredBy: null
                   },
                   awaitingDrawResponse: false,
-                  moveThinkingTokens: updatedThinkingTokens
+                  moveThinkingTokens: updatedThinkingTokens,
+                  moveTimes: updatedMoveTimes
                 };
               } else {
                 // Draw declined, continue game
@@ -283,7 +305,8 @@ const ChessGame: React.FC = () => {
                     offeredBy: null
                   },
                   awaitingDrawResponse: false,
-                  moveThinkingTokens: updatedThinkingTokens
+                  moveThinkingTokens: updatedThinkingTokens,
+                  moveTimes: updatedMoveTimes
                 };
               }
             });
@@ -321,6 +344,8 @@ const ChessGame: React.FC = () => {
       ...prev,
       isGameStarted: true,
       game: new Chess(),
+      moveThinkingTokens: [],
+      moveTimes: [],
       drawOffer: {
         offered: false,
         offeredBy: null
@@ -372,6 +397,7 @@ const ChessGame: React.FC = () => {
         black: []
       },
       moveThinkingTokens: [],
+      moveTimes: [],
       drawOffer: {
         offered: false,
         offeredBy: null
@@ -574,7 +600,7 @@ const ChessGame: React.FC = () => {
               textAlign: 'center',
               borderBottom: '1px solid #ddd'
             }}>
-              Numbers in parentheses show thinking tokens used
+              Numbers in parentheses show thinking tokens used, followed by response time
             </div>
           </div>
           
@@ -631,6 +657,8 @@ const ChessGame: React.FC = () => {
                     const blackMove = gameState.game.history()[i * 2 + 1];
                     const whiteThinkingTokens = gameState.moveThinkingTokens[i * 2];
                     const blackThinkingTokens = gameState.moveThinkingTokens[i * 2 + 1];
+                    const whiteMoveTime = gameState.moveTimes[i * 2];
+                    const blackMoveTime = gameState.moveTimes[i * 2 + 1];
                     
                     return (
                       <tr key={moveNumber}>
@@ -651,9 +679,11 @@ const ChessGame: React.FC = () => {
                           {whiteMove ? (
                             <div>
                               <div>{whiteMove}</div>
-                              {whiteThinkingTokens !== undefined && (
+                              {(whiteThinkingTokens !== undefined || whiteMoveTime !== undefined) && (
                                 <div style={{ fontSize: '10px', color: '#666' }}>
-                                  ({whiteThinkingTokens})
+                                  {whiteThinkingTokens !== undefined && `(${whiteThinkingTokens})`}
+                                  {whiteThinkingTokens !== undefined && whiteMoveTime !== undefined && ' '}
+                                  {whiteMoveTime !== undefined && `${formatTime(whiteMoveTime)}`}
                                 </div>
                               )}
                             </div>
@@ -668,9 +698,11 @@ const ChessGame: React.FC = () => {
                           {blackMove ? (
                             <div>
                               <div>{blackMove}</div>
-                              {blackThinkingTokens !== undefined && (
+                              {(blackThinkingTokens !== undefined || blackMoveTime !== undefined) && (
                                 <div style={{ fontSize: '10px', color: '#666' }}>
-                                  ({blackThinkingTokens})
+                                  {blackThinkingTokens !== undefined && `(${blackThinkingTokens})`}
+                                  {blackThinkingTokens !== undefined && blackMoveTime !== undefined && ' '}
+                                  {blackMoveTime !== undefined && `${formatTime(blackMoveTime)}`}
                                 </div>
                               )}
                             </div>
