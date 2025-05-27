@@ -5,7 +5,7 @@ const Navigation: React.FC = () => {
   return (
     <nav style={{ 
       padding: '1rem', 
-      backgroundColor: '#282c34', 
+      backgroundColor: '#333', 
       display: 'flex', 
       justifyContent: 'center',
       gap: '2rem'
@@ -13,7 +13,7 @@ const Navigation: React.FC = () => {
       <Link 
         to="/" 
         style={{ 
-          color: '#61dafb', 
+          color: 'white', 
           textDecoration: 'none', 
           fontSize: '1.2rem',
           fontWeight: 'bold'
@@ -24,7 +24,7 @@ const Navigation: React.FC = () => {
       <Link 
         to="/about" 
         style={{ 
-          color: '#61dafb', 
+          color: 'white', 
           textDecoration: 'none', 
           fontSize: '1.2rem',
           fontWeight: 'bold'

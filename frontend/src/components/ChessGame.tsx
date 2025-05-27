@@ -407,6 +407,20 @@ const ChessGame: React.FC = () => {
     });
   };
 
+  const pickRandomModels = () => {
+    // Create a copy of the models array and shuffle it
+    const shuffledModels = [...MODELS].sort(() => Math.random() - 0.5);
+    
+    // Pick the first two models (guaranteed to be different)
+    const [whiteModel, blackModel] = shuffledModels;
+    
+    setGameState(prev => ({
+      ...prev,
+      whiteModel,
+      blackModel
+    }));
+  };
+
   const nextMove = () => {
     if (gameState.gameMode === 'manual' && gameState.isGameStarted && !gameState.isGameOver && !gameState.isThinking) {
       const currentModel = gameState.currentPlayer === 'white' ? gameState.whiteModel : gameState.blackModel;
@@ -438,6 +452,23 @@ const ChessGame: React.FC = () => {
         />
         
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'center' }}>
+          {!gameState.isGameStarted && (
+            <button
+              onClick={pickRandomModels}
+              style={{
+                padding: '8px 16px',
+                fontSize: '14px',
+                backgroundColor: '#333',
+                color: 'white',
+                border: 'none',
+                borderRadius: '5px',
+                cursor: 'pointer',
+                marginBottom: '5px'
+              }}
+            >
+              Pick Random Models
+            </button>
+          )}
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             <label style={{ fontSize: '14px', color: '#666' }}>Mode:</label>
             <select
@@ -481,7 +512,7 @@ const ChessGame: React.FC = () => {
                   style={{
                     padding: '10px 15px',
                     fontSize: '14px',
-                    backgroundColor: gameState.isGameOver || gameState.isThinking ? '#ccc' : '#2196F3',
+                    backgroundColor: gameState.isGameOver || gameState.isThinking ? '#ccc' : '#333',
                     color: 'white',
                     border: 'none',
                     borderRadius: '5px',
@@ -546,7 +577,7 @@ const ChessGame: React.FC = () => {
           </div>
         )}
         {gameState.gameResult && (
-          <p style={{ fontSize: '20px', fontWeight: 'bold', color: '#4CAF50' }}>
+          <p style={{ fontSize: '20px', fontWeight: 'bold', color: '#333' }}>
             {gameState.gameResult}
           </p>
         )}
@@ -578,13 +609,13 @@ const ChessGame: React.FC = () => {
         <div style={{ 
           minWidth: '300px',
           maxWidth: '400px',
-          border: '2px solid #8b4513',
+          border: '2px solid #666',
           borderRadius: '8px',
           backgroundColor: '#f8f8f8'
         }}>
           <div>
             <div style={{
-              backgroundColor: '#8b4513',
+              backgroundColor: '#333',
               color: 'white',
               padding: '12px',
               textAlign: 'center',
