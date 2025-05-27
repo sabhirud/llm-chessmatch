@@ -91,7 +91,10 @@ async def call_anthropic_api(model: str, prompt: str):
             # Fallback to first content block if no text type found
             move = response.content[0].text.strip()
         
-        return {"move": move}
+        # Extract thinking tokens
+        thinking_tokens = response.usage.output_tokens if hasattr(response, 'usage') and hasattr(response.usage, 'output_tokens') else 0
+        
+        return {"move": move, "thinking_tokens": thinking_tokens}
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error calling Anthropic API: {str(e)}")
@@ -120,7 +123,13 @@ async def call_openai_api(model: str, prompt: str):
         
         if message_output and message_output.content:
             move = message_output.content[0].text.strip()
-            return {"move": move}
+            
+            # Extract thinking tokens
+            thinking_tokens = 0
+            if hasattr(response, 'usage') and hasattr(response.usage, 'output_tokens_details') and hasattr(response.usage.output_tokens_details, 'reasoning_tokens'):
+                thinking_tokens = response.usage.output_tokens_details.reasoning_tokens
+            
+            return {"move": move, "thinking_tokens": thinking_tokens}
         else:
             raise HTTPException(status_code=500, detail="No message content found in OpenAI response")
         
@@ -140,7 +149,13 @@ async def call_gemini_api(model: str, prompt: str):
         )
         
         move = response.text.strip()
-        return {"move": move}
+        
+        # Extract thinking tokens
+        thinking_tokens = 0
+        if hasattr(response, 'usage_metadata') and hasattr(response.usage_metadata, 'thoughts_token_count'):
+            thinking_tokens = response.usage_metadata.thoughts_token_count
+        
+        return {"move": move, "thinking_tokens": thinking_tokens}
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error calling Google Gemini API: {str(e)}")
@@ -173,7 +188,13 @@ async def call_xai_api(model: str, prompt: str):
         )
         
         move = response.choices[0].message.content.strip()
-        return {"move": move}
+        
+        # Extract thinking tokens
+        thinking_tokens = 0
+        if hasattr(response, 'usage') and hasattr(response.usage, 'completion_tokens_details') and hasattr(response.usage.completion_tokens_details, 'reasoning_tokens'):
+            thinking_tokens = response.usage.completion_tokens_details.reasoning_tokens
+        
+        return {"move": move, "thinking_tokens": thinking_tokens}
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error calling X.AI API: {str(e)}")

@@ -26,6 +26,7 @@ interface GameState {
     white: string[];
     black: string[];
   };
+  moveThinkingTokens: number[];
 }
 
 const ChessGame: React.FC = () => {
@@ -42,7 +43,8 @@ const ChessGame: React.FC = () => {
     capturedPieces: {
       white: [],
       black: []
-    }
+    },
+    moveThinkingTokens: []
   });
 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -130,6 +132,9 @@ const ChessGame: React.FC = () => {
                     updatedCapturedPieces[capturedBy] = [...updatedCapturedPieces[capturedBy], move.captured];
                   }
 
+                  // Update thinking tokens
+                  const updatedThinkingTokens = [...prevState.moveThinkingTokens, data.thinking_tokens || 0];
+
                   return {
                     ...prevState,
                     game: newGame,
@@ -137,7 +142,8 @@ const ChessGame: React.FC = () => {
                     isGameOver,
                     gameResult,
                     isThinking: false,
-                    capturedPieces: updatedCapturedPieces
+                    capturedPieces: updatedCapturedPieces,
+                    moveThinkingTokens: updatedThinkingTokens
                   };
                 } else {
                   console.error('Invalid move returned:', data.move);
@@ -210,7 +216,8 @@ const ChessGame: React.FC = () => {
       capturedPieces: {
         white: [],
         black: []
-      }
+      },
+      moveThinkingTokens: []
     });
   };
 
@@ -363,15 +370,27 @@ const ChessGame: React.FC = () => {
           borderRadius: '8px',
           backgroundColor: '#f8f8f8'
         }}>
-          <div style={{
-            backgroundColor: '#8b4513',
-            color: 'white',
-            padding: '12px',
-            textAlign: 'center',
-            fontWeight: 'bold',
-            fontSize: '16px'
-          }}>
-            Move History
+          <div>
+            <div style={{
+              backgroundColor: '#8b4513',
+              color: 'white',
+              padding: '12px',
+              textAlign: 'center',
+              fontWeight: 'bold',
+              fontSize: '16px'
+            }}>
+              Move History
+            </div>
+            <div style={{
+              backgroundColor: '#f0f0f0',
+              padding: '8px 12px',
+              fontSize: '11px',
+              color: '#666',
+              textAlign: 'center',
+              borderBottom: '1px solid #ddd'
+            }}>
+              Numbers in parentheses show thinking tokens used
+            </div>
           </div>
           
           <div style={{ 
@@ -425,6 +444,8 @@ const ChessGame: React.FC = () => {
                     const moveNumber = i + 1;
                     const whiteMove = gameState.game.history()[i * 2];
                     const blackMove = gameState.game.history()[i * 2 + 1];
+                    const whiteThinkingTokens = gameState.moveThinkingTokens[i * 2];
+                    const blackThinkingTokens = gameState.moveThinkingTokens[i * 2 + 1];
                     
                     return (
                       <tr key={moveNumber}>
@@ -442,7 +463,16 @@ const ChessGame: React.FC = () => {
                           textAlign: 'center',
                           fontFamily: 'monospace'
                         }}>
-                          {whiteMove || ''}
+                          {whiteMove ? (
+                            <div>
+                              <div>{whiteMove}</div>
+                              {whiteThinkingTokens !== undefined && (
+                                <div style={{ fontSize: '10px', color: '#666' }}>
+                                  ({whiteThinkingTokens})
+                                </div>
+                              )}
+                            </div>
+                          ) : ''}
                         </td>
                         <td style={{ 
                           border: '1px solid #ddd', 
@@ -450,7 +480,16 @@ const ChessGame: React.FC = () => {
                           textAlign: 'center',
                           fontFamily: 'monospace'
                         }}>
-                          {blackMove || '...'}
+                          {blackMove ? (
+                            <div>
+                              <div>{blackMove}</div>
+                              {blackThinkingTokens !== undefined && (
+                                <div style={{ fontSize: '10px', color: '#666' }}>
+                                  ({blackThinkingTokens})
+                                </div>
+                              )}
+                            </div>
+                          ) : '...'}
                         </td>
                       </tr>
                     );
