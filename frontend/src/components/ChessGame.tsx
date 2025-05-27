@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import { Chess } from 'chess.js';
 import ChessBoard from './ChessBoard';
 import ModelSelector from './ModelSelector';
+import CapturedPiecesRow from './CapturedPieces';
 
 const MODELS = [
   'claude-opus-4-20250514',
@@ -21,6 +22,10 @@ interface GameState {
   isThinking: boolean;
   gameResult: string | null;
   gameMode: 'auto' | 'manual';
+  capturedPieces: {
+    white: string[];
+    black: string[];
+  };
 }
 
 const ChessGame: React.FC = () => {
@@ -33,7 +38,11 @@ const ChessGame: React.FC = () => {
     blackModel: '',
     isThinking: false,
     gameResult: null,
-    gameMode: 'manual'
+    gameMode: 'manual',
+    capturedPieces: {
+      white: [],
+      black: []
+    }
   });
 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -114,13 +123,21 @@ const ChessGame: React.FC = () => {
                     }
                   }
 
+                  // Update captured pieces if a piece was captured
+                  let updatedCapturedPieces = { ...prevState.capturedPieces };
+                  if (move.captured) {
+                    const capturedBy = player === 'white' ? 'white' : 'black';
+                    updatedCapturedPieces[capturedBy] = [...updatedCapturedPieces[capturedBy], move.captured];
+                  }
+
                   return {
                     ...prevState,
                     game: newGame,
                     currentPlayer: prevState.currentPlayer === 'white' ? 'black' : 'white',
                     isGameOver,
                     gameResult,
-                    isThinking: false
+                    isThinking: false,
+                    capturedPieces: updatedCapturedPieces
                   };
                 } else {
                   console.error('Invalid move returned:', data.move);
@@ -189,7 +206,11 @@ const ChessGame: React.FC = () => {
       blackModel: gameState.blackModel,
       isThinking: false,
       gameResult: null,
-      gameMode: 'manual'
+      gameMode: 'manual',
+      capturedPieces: {
+        white: [],
+        black: []
+      }
     });
   };
 
@@ -318,10 +339,22 @@ const ChessGame: React.FC = () => {
       </div>
 
       <div style={{ display: 'flex', gap: '30px', alignItems: 'flex-start' }}>
-        <ChessBoard 
-          game={gameState.game}
-          isGameStarted={gameState.isGameStarted}
-        />
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '5px' }}>
+          <CapturedPiecesRow 
+            pieces={gameState.capturedPieces.white} 
+            capturedBy="white"
+          />
+          
+          <ChessBoard 
+            game={gameState.game}
+            isGameStarted={gameState.isGameStarted}
+          />
+          
+          <CapturedPiecesRow 
+            pieces={gameState.capturedPieces.black} 
+            capturedBy="black"
+          />
+        </div>
 
         <div style={{ 
           minWidth: '300px',

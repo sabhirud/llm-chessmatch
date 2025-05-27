@@ -52,36 +52,21 @@ const ChessBoard: React.FC<ChessBoardProps> = ({ game, isGameStarted }) => {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(8, 70px)',
-        gridTemplateRows: 'repeat(8, 70px)',
-        border: '3px solid #8b4513',
-        backgroundColor: '#fff',
-        borderRadius: '8px',
-        overflow: 'hidden',
-        opacity: isGameStarted ? 1 : 0.7
-      }}>
-        {board.map((row, rowIndex) =>
-          row.map((piece, colIndex) =>
-            renderSquare(piece, rowIndex, colIndex)
-          )
-        )}
-      </div>
-      
-      <div style={{ 
-        marginTop: '15px', 
-        fontSize: '12px', 
-        color: '#666',
-        fontFamily: 'monospace',
-        backgroundColor: '#f8f8f8',
-        padding: '8px 12px',
-        borderRadius: '4px',
-        border: '1px solid #ddd'
-      }}>
-        FEN: {game.fen()}
-      </div>
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'repeat(8, 70px)',
+      gridTemplateRows: 'repeat(8, 70px)',
+      border: '3px solid #8b4513',
+      backgroundColor: '#fff',
+      borderRadius: '8px',
+      overflow: 'hidden',
+      opacity: isGameStarted ? 1 : 0.7
+    }}>
+      {board.map((row, rowIndex) =>
+        row.map((piece, colIndex) =>
+          renderSquare(piece, rowIndex, colIndex)
+        )
+      )}
     </div>
   );
 };
