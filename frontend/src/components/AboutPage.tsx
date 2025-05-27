@@ -12,6 +12,10 @@ const AboutPage: React.FC = () => {
       </p>
 
       <p>
+        Beyond standard chess moves, models can also offer draws (which the opponent can accept or decline) or resign when they determine their position is hopeless. This adds realistic chess behavior where models can recognize when continuing play is futile.
+      </p>
+
+      <p>
         This app was built entirely with <a href="https://www.anthropic.com/claude-code" target="_blank" rel="noopener noreferrer" style={{ color: '#0099cc', textDecoration: 'underline' }}>Claude Code</a>.
       </p>
 

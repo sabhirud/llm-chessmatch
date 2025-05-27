@@ -22,6 +22,64 @@ app.add_middleware(
 async def health_check():
     return {"status": "healthy", "message": "API is operational"}
 
+@app.post("/draw_response")
+async def draw_response(request: Dict[str, Any]):
+    # Validate required fields
+    if "model" not in request:
+        raise HTTPException(status_code=400, detail="Field 'model' is required")
+    if "game_state" not in request:
+        raise HTTPException(status_code=400, detail="Field 'game_state' is required")
+    if "move_history" not in request:
+        raise HTTPException(status_code=400, detail="Field 'move_history' is required")
+    
+    # Validate model
+    allowed_models = ["claude-opus-4-20250514", "claude-sonnet-4-20250514", "o4-mini", "gemini-2.5-pro-preview-05-06", "grok-3-mini"]
+    if request["model"] not in allowed_models:
+        raise HTTPException(status_code=400, detail=f"Only {', '.join(allowed_models)} models are allowed")
+    
+    # Validate types
+    if not isinstance(request["game_state"], str):
+        raise HTTPException(status_code=400, detail="Field 'game_state' must be a string")
+    if not isinstance(request["move_history"], list):
+        raise HTTPException(status_code=400, detail="Field 'move_history' must be a list")
+    
+    move_history_str = ", ".join(request["move_history"]) if request["move_history"] else "No moves yet"
+    
+    prompt = f"""You are a chess AI. Your opponent has offered you a draw.
+
+    Game State (FEN): {request["game_state"]}
+    Move History: {move_history_str}
+
+    Respond with either "ACCEPT" to accept the draw offer or "DECLINE" to decline and continue playing."""
+
+    if request["model"] in ["claude-opus-4-20250514", "claude-sonnet-4-20250514"]:
+        response = await call_anthropic_api(request["model"], prompt)
+    elif request["model"] == "o4-mini":
+        response = await call_openai_api(request["model"], prompt)
+    elif request["model"] == "gemini-2.5-pro-preview-05-06":
+        response = await call_gemini_api(request["model"], prompt)
+    elif request["model"] == "grok-3-mini":
+        response = await call_xai_api(request["model"], prompt)
+    
+    # Handle draw response
+    if "move" in response:
+        decision = response["move"].upper()
+        if decision == "ACCEPT":
+            return {"action": "draw_accept", "thinking_tokens": response.get("thinking_tokens", 0)}
+        elif decision == "DECLINE":
+            return {"action": "draw_decline", "thinking_tokens": response.get("thinking_tokens", 0)}
+        else:
+            # Default to decline if unclear
+            return {"action": "draw_decline", "thinking_tokens": response.get("thinking_tokens", 0)}
+    elif "action" in response:
+        # Handle if the model returned an action directly
+        if response["action"] in ["draw_accept", "draw_decline"]:
+            return response
+        else:
+            return {"action": "draw_decline", "thinking_tokens": response.get("thinking_tokens", 0)}
+    else:
+        return {"action": "draw_decline", "thinking_tokens": response.get("thinking_tokens", 0)}
+
 @app.post("/get_move")
 async def get_move(request: Dict[str, Any]):
     # Validate required fields
@@ -45,12 +103,16 @@ async def get_move(request: Dict[str, Any]):
     
     move_history_str = ", ".join(request["move_history"]) if request["move_history"] else "No moves yet"
     
-    prompt = f"""You are a chess AI. Given the current game state and move history, provide the next best move.
+    
+    prompt = f"""You are a chess AI. Given the current game state and move history, you can either:
+1. Make a chess move in standard algebraic notation (e.g., "e4", "Nf3", "O-O")
+2. Resign by responding with exactly "RESIGN"
+3. Offer a draw by responding with exactly "DRAW_OFFER"
 
     Game State (FEN): {request["game_state"]}
     Move History: {move_history_str}
 
-    Please respond with only the move in standard algebraic notation (e.g., "e4", "Nf3", "O-O", etc.)."""
+    Respond with either a move, "RESIGN", or "DRAW_OFFER"."""
 
     if request["model"] in ["claude-opus-4-20250514", "claude-sonnet-4-20250514"]:
         return await call_anthropic_api(request["model"], prompt)
@@ -94,7 +156,13 @@ async def call_anthropic_api(model: str, prompt: str):
         # Extract thinking tokens
         thinking_tokens = response.usage.output_tokens if hasattr(response, 'usage') and hasattr(response.usage, 'output_tokens') else 0
         
-        return {"move": move, "thinking_tokens": thinking_tokens}
+        # Check for special actions
+        if move.upper() == "RESIGN":
+            return {"action": "resign", "thinking_tokens": thinking_tokens}
+        elif move.upper() == "DRAW_OFFER":
+            return {"action": "draw_offer", "thinking_tokens": thinking_tokens}
+        else:
+            return {"move": move, "thinking_tokens": thinking_tokens}
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error calling Anthropic API: {str(e)}")
@@ -129,7 +197,13 @@ async def call_openai_api(model: str, prompt: str):
             if hasattr(response, 'usage') and hasattr(response.usage, 'output_tokens_details') and hasattr(response.usage.output_tokens_details, 'reasoning_tokens'):
                 thinking_tokens = response.usage.output_tokens_details.reasoning_tokens
             
-            return {"move": move, "thinking_tokens": thinking_tokens}
+            # Check for special actions
+            if move.upper() == "RESIGN":
+                return {"action": "resign", "thinking_tokens": thinking_tokens}
+            elif move.upper() == "DRAW_OFFER":
+                return {"action": "draw_offer", "thinking_tokens": thinking_tokens}
+            else:
+                return {"move": move, "thinking_tokens": thinking_tokens}
         else:
             raise HTTPException(status_code=500, detail="No message content found in OpenAI response")
         
@@ -155,7 +229,13 @@ async def call_gemini_api(model: str, prompt: str):
         if hasattr(response, 'usage_metadata') and hasattr(response.usage_metadata, 'thoughts_token_count'):
             thinking_tokens = response.usage_metadata.thoughts_token_count
         
-        return {"move": move, "thinking_tokens": thinking_tokens}
+        # Check for special actions
+        if move.upper() == "RESIGN":
+            return {"action": "resign", "thinking_tokens": thinking_tokens}
+        elif move.upper() == "DRAW_OFFER":
+            return {"action": "draw_offer", "thinking_tokens": thinking_tokens}
+        else:
+            return {"move": move, "thinking_tokens": thinking_tokens}
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error calling Google Gemini API: {str(e)}")
@@ -194,7 +274,13 @@ async def call_xai_api(model: str, prompt: str):
         if hasattr(response, 'usage') and hasattr(response.usage, 'completion_tokens_details') and hasattr(response.usage.completion_tokens_details, 'reasoning_tokens'):
             thinking_tokens = response.usage.completion_tokens_details.reasoning_tokens
         
-        return {"move": move, "thinking_tokens": thinking_tokens}
+        # Check for special actions
+        if move.upper() == "RESIGN":
+            return {"action": "resign", "thinking_tokens": thinking_tokens}
+        elif move.upper() == "DRAW_OFFER":
+            return {"action": "draw_offer", "thinking_tokens": thinking_tokens}
+        else:
+            return {"move": move, "thinking_tokens": thinking_tokens}
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error calling X.AI API: {str(e)}")
