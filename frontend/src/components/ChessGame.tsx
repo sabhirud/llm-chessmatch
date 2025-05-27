@@ -559,8 +559,8 @@ const ChessGame: React.FC = () => {
       <div style={{ display: 'flex', gap: '30px', alignItems: 'flex-start' }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '5px' }}>
           <CapturedPiecesRow 
-            pieces={gameState.capturedPieces.white} 
-            capturedBy="white"
+            pieces={gameState.capturedPieces.black} 
+            capturedBy="black"
           />
           
           <ChessBoard 
@@ -569,8 +569,8 @@ const ChessGame: React.FC = () => {
           />
           
           <CapturedPiecesRow 
-            pieces={gameState.capturedPieces.black} 
-            capturedBy="black"
+            pieces={gameState.capturedPieces.white} 
+            capturedBy="white"
           />
         </div>
 
