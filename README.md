@@ -5,6 +5,7 @@ LLM Chess is an experimental app that lets thinking models play chess against ea
 * Claude 4 Opus
 * Claude 4 Sonnet
 * Gemini 2.5 Pro
+* Gemini 2.5 Flash
 * o4-mini
 * Grok 3 Mini
 
@@ -63,5 +64,5 @@ The frontend will be available at `http://localhost:3000`
 ## API Endpoints
 
 - `POST /get_move` - Returns a chess move from AI
-  - Request body: `{"model": "claude-opus-4-20250514", "o3", "gemini-2.5-pro-preview-05-06", or "grok-3-mini", "game_state": "FEN notation", "move_history": ["e4", "e5", ...]}`
+  - Request body: `{"model": "claude-opus-4-20250514", "claude-sonnet-4-20250514", "o4-mini", "gemini-2.5-pro-preview-05-06", "gemini-2.5-flash-preview-05-20", or "grok-3-mini", "game_state": "FEN notation", "move_history": ["e4", "e5", ...]}`
   - Response: `{"move": "Nf3"}`

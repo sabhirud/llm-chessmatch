@@ -6,6 +6,7 @@ from typing import List, Dict, Any
 from openai import OpenAI
 from anthropic import Anthropic
 from google import genai
+from google.genai import types
 
 app = FastAPI()
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
@@ -33,7 +34,7 @@ async def draw_response(request: Dict[str, Any]):
         raise HTTPException(status_code=400, detail="Field 'move_history' is required")
     
     # Validate model
-    allowed_models = ["claude-opus-4-20250514", "claude-sonnet-4-20250514", "o4-mini", "gemini-2.5-pro-preview-05-06", "grok-3-mini"]
+    allowed_models = ["claude-opus-4-20250514", "claude-sonnet-4-20250514", "o4-mini", "gemini-2.5-pro-preview-05-06", "gemini-2.5-flash-preview-05-20", "grok-3-mini"]
     if request["model"] not in allowed_models:
         raise HTTPException(status_code=400, detail=f"Only {', '.join(allowed_models)} models are allowed")
     
@@ -56,7 +57,7 @@ async def draw_response(request: Dict[str, Any]):
         response = await call_anthropic_api(request["model"], prompt)
     elif request["model"] == "o4-mini":
         response = await call_openai_api(request["model"], prompt)
-    elif request["model"] == "gemini-2.5-pro-preview-05-06":
+    elif request["model"] in ["gemini-2.5-pro-preview-05-06", "gemini-2.5-flash-preview-05-20"]:
         response = await call_gemini_api(request["model"], prompt)
     elif request["model"] == "grok-3-mini":
         response = await call_xai_api(request["model"], prompt)
@@ -91,7 +92,7 @@ async def get_move(request: Dict[str, Any]):
         raise HTTPException(status_code=400, detail="Field 'move_history' is required")
     
     # Validate model
-    allowed_models = ["claude-opus-4-20250514", "claude-sonnet-4-20250514", "o4-mini", "gemini-2.5-pro-preview-05-06", "grok-3-mini"]
+    allowed_models = ["claude-opus-4-20250514", "claude-sonnet-4-20250514", "o4-mini", "gemini-2.5-pro-preview-05-06", "gemini-2.5-flash-preview-05-20", "grok-3-mini"]
     if request["model"] not in allowed_models:
         raise HTTPException(status_code=400, detail=f"Only {', '.join(allowed_models)} models are allowed")
     
@@ -118,7 +119,7 @@ async def get_move(request: Dict[str, Any]):
         return await call_anthropic_api(request["model"], prompt)
     elif request["model"] == "o4-mini":
         return await call_openai_api(request["model"], prompt)
-    elif request["model"] == "gemini-2.5-pro-preview-05-06":
+    elif request["model"] in ["gemini-2.5-pro-preview-05-06", "gemini-2.5-flash-preview-05-20"]:
         return await call_gemini_api(request["model"], prompt)
     elif request["model"] == "grok-3-mini":
         return await call_xai_api(request["model"], prompt)
@@ -217,10 +218,21 @@ async def call_gemini_api(model: str, prompt: str):
 
     try:
         client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(
-            model=model,
-            contents=prompt
-        )
+        
+        # Add thinking config for flash model
+        if model == "gemini-2.5-flash-preview-05-20":
+            response = client.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    thinking_config=types.ThinkingConfig(thinking_budget=1024)
+                )
+            )
+        else:
+            response = client.models.generate_content(
+                model=model,
+                contents=prompt
+            )
         
         move = response.text.strip()
         
