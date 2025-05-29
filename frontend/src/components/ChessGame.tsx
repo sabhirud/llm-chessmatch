@@ -95,6 +95,8 @@ const ChessGame: React.FC = () => {
     const currentHistory = gameState.game.history();
     const startTime = Date.now();
     const isAnthropicModel = model.includes('claude');
+    const isGeminiModel = model.includes('gemini');
+    const supportsStreaming = isAnthropicModel || isGeminiModel;
     
     console.log('Starting move for', player, 'with history:', currentHistory);
     
@@ -103,7 +105,7 @@ const ChessGame: React.FC = () => {
       ...prev, 
       isThinking: true,
       thinkingOutput: '',
-      isStreaming: isAnthropicModel
+      isStreaming: supportsStreaming
     }));
     
     // Reset thinking output ref
@@ -111,7 +113,7 @@ const ChessGame: React.FC = () => {
     
     // Set up periodic updates for thinking output
     let updateInterval: NodeJS.Timeout | null = null;
-    if (isAnthropicModel) {
+    if (supportsStreaming) {
       updateInterval = setInterval(() => {
         setGameState(prev => ({
           ...prev,

@@ -117,10 +117,15 @@ async def get_move_stream(request: Dict[str, Any]):
 
     Respond with either a move, "RESIGN", or "DRAW_OFFER"."""
 
-    # Only stream for Anthropic models
+    # Stream for Anthropic and Gemini models
     if request["model"] in ["claude-opus-4-20250514", "claude-sonnet-4-20250514"]:
         return StreamingResponse(
             stream_anthropic_move(request["model"], prompt),
+            media_type="text/event-stream"
+        )
+    elif request["model"] in ["gemini-2.5-pro-preview-05-06", "gemini-2.5-flash-preview-05-20"]:
+        return StreamingResponse(
+            stream_gemini_move(request["model"], prompt),
             media_type="text/event-stream"
         )
     else:
@@ -280,20 +285,16 @@ async def call_gemini_api(model: str, prompt: str):
     try:
         client = genai.Client(api_key=api_key)
         
-        # Add thinking config for flash model
-        if model == "gemini-2.5-flash-preview-05-20":
-            response = client.models.generate_content(
-                model=model,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    thinking_config=types.ThinkingConfig(thinking_budget=1024)
+        # Add thinking config for both Gemini models
+        response = client.models.generate_content(
+            model=model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                thinking_config=types.ThinkingConfig(
+                    include_thoughts=True
                 )
             )
-        else:
-            response = client.models.generate_content(
-                model=model,
-                contents=prompt
-            )
+        )
         
         move = response.text.strip()
         
@@ -357,6 +358,86 @@ async def call_xai_api(model: str, prompt: str):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error calling X.AI API: {str(e)}")
+
+async def stream_gemini_move(model: str, prompt: str) -> AsyncGenerator[str, None]:
+    """Stream Gemini API response with thinking outputs."""
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        yield f"data: {json.dumps({'type': 'error', 'message': 'GEMINI_API_KEY not configured'})}\n\n"
+        return
+
+    try:
+        client = genai.Client(api_key=api_key)
+        thinking_content = ""
+        final_response = ""
+        thinking_tokens = 0
+        
+        # Configure thinking for both models
+        config = types.GenerateContentConfig(
+            thinking_config=types.ThinkingConfig(
+                include_thoughts=True
+            )
+        )
+        
+        # Indicate we're starting to think
+        yield f"data: {json.dumps({'type': 'thinking_start'})}\n\n"
+        
+        # Stream the response
+        for chunk in client.models.generate_content_stream(
+            model=model,
+            contents=prompt,
+            config=config
+        ):
+            if hasattr(chunk, 'candidates') and chunk.candidates:
+                for candidate in chunk.candidates:
+                    if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
+                        for part in candidate.content.parts:
+                            # Skip if no text
+                            if not hasattr(part, 'text') or not part.text:
+                                continue
+                                
+                            # Check if this is a thought
+                            if hasattr(part, 'thought') and part.thought:
+                                # This is thinking content
+                                thinking_content += part.text
+                                yield f"data: {json.dumps({'type': 'thinking_delta', 'content': part.text})}\n\n"
+                                await asyncio.sleep(0)  # Allow event loop to process
+                            else:
+                                # This is the actual response
+                                if thinking_content and not final_response:
+                                    # First response text after thinking
+                                    yield f"data: {json.dumps({'type': 'thinking_end'})}\n\n"
+                                    yield f"data: {json.dumps({'type': 'response_start'})}\n\n"
+                                final_response += part.text
+                                yield f"data: {json.dumps({'type': 'response_delta', 'content': part.text})}\n\n"
+            
+            # Check for usage metadata
+            if hasattr(chunk, 'usage_metadata'):
+                if hasattr(chunk.usage_metadata, 'thoughts_token_count'):
+                    thinking_tokens = chunk.usage_metadata.thoughts_token_count
+        
+        # End response if we have one
+        if final_response:
+            yield f"data: {json.dumps({'type': 'response_end'})}\n\n"
+        
+        # Process the final response
+        move = final_response.strip()
+        result = {}
+        
+        # Check for special actions
+        if move.upper() == "RESIGN":
+            result = {"action": "resign", "thinking_tokens": thinking_tokens}
+        elif move.upper() == "DRAW_OFFER":
+            result = {"action": "draw_offer", "thinking_tokens": thinking_tokens}
+        else:
+            result = {"move": move, "thinking_tokens": thinking_tokens}
+        
+        # Send the final result
+        yield f"data: {json.dumps({'type': 'result', 'data': result})}\n\n"
+        yield "data: [DONE]\n\n"
+        
+    except Exception as e:
+        yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
 async def stream_anthropic_move(model: str, prompt: str) -> AsyncGenerator[str, None]:
     """Stream Anthropic API response with thinking outputs."""
