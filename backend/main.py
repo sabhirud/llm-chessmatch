@@ -1,8 +1,11 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 import random
 import os
-from typing import List, Dict, Any
+import json
+import asyncio
+from typing import List, Dict, Any, AsyncGenerator
 from openai import OpenAI
 from anthropic import Anthropic
 from google import genai
@@ -80,6 +83,64 @@ async def draw_response(request: Dict[str, Any]):
             return {"action": "draw_decline", "thinking_tokens": response.get("thinking_tokens", 0)}
     else:
         return {"action": "draw_decline", "thinking_tokens": response.get("thinking_tokens", 0)}
+
+@app.post("/get_move_stream")
+async def get_move_stream(request: Dict[str, Any]):
+    # Validate required fields
+    if "model" not in request:
+        raise HTTPException(status_code=400, detail="Field 'model' is required")
+    if "game_state" not in request:
+        raise HTTPException(status_code=400, detail="Field 'game_state' is required")
+    if "move_history" not in request:
+        raise HTTPException(status_code=400, detail="Field 'move_history' is required")
+    
+    # Validate model
+    allowed_models = ["claude-opus-4-20250514", "claude-sonnet-4-20250514", "o4-mini", "gemini-2.5-pro-preview-05-06", "gemini-2.5-flash-preview-05-20", "grok-3-mini"]
+    if request["model"] not in allowed_models:
+        raise HTTPException(status_code=400, detail=f"Only {', '.join(allowed_models)} models are allowed")
+    
+    # Validate types
+    if not isinstance(request["game_state"], str):
+        raise HTTPException(status_code=400, detail="Field 'game_state' must be a string")
+    if not isinstance(request["move_history"], list):
+        raise HTTPException(status_code=400, detail="Field 'move_history' must be a list")
+    
+    move_history_str = ", ".join(request["move_history"]) if request["move_history"] else "No moves yet"
+    
+    prompt = f"""You are a chess AI. Given the current game state and move history, you can either:
+1. Make a chess move in standard algebraic notation (e.g., "e4", "Nf3", "O-O")
+2. Resign by responding with exactly "RESIGN"
+3. Offer a draw by responding with exactly "DRAW_OFFER"
+
+    Game State (FEN): {request["game_state"]}
+    Move History: {move_history_str}
+
+    Respond with either a move, "RESIGN", or "DRAW_OFFER"."""
+
+    # Only stream for Anthropic models
+    if request["model"] in ["claude-opus-4-20250514", "claude-sonnet-4-20250514"]:
+        return StreamingResponse(
+            stream_anthropic_move(request["model"], prompt),
+            media_type="text/event-stream"
+        )
+    else:
+        # For non-Anthropic models, return a non-streaming response wrapped as SSE
+        async def non_streaming_wrapper():
+            if request["model"] == "o4-mini":
+                result = await call_openai_api(request["model"], prompt)
+            elif request["model"] in ["gemini-2.5-pro-preview-05-06", "gemini-2.5-flash-preview-05-20"]:
+                result = await call_gemini_api(request["model"], prompt)
+            elif request["model"] == "grok-3-mini":
+                result = await call_xai_api(request["model"], prompt)
+            
+            # Send the result as a single SSE event
+            yield f"data: {json.dumps({'type': 'result', 'data': result})}\n\n"
+            yield "data: [DONE]\n\n"
+        
+        return StreamingResponse(
+            non_streaming_wrapper(),
+            media_type="text/event-stream"
+        )
 
 @app.post("/get_move")
 async def get_move(request: Dict[str, Any]):
@@ -296,6 +357,100 @@ async def call_xai_api(model: str, prompt: str):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error calling X.AI API: {str(e)}")
+
+async def stream_anthropic_move(model: str, prompt: str) -> AsyncGenerator[str, None]:
+    """Stream Anthropic API response with thinking outputs."""
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        yield f"data: {json.dumps({'type': 'error', 'message': 'ANTHROPIC_API_KEY not configured'})}\n\n"
+        return
+
+    try:
+        client = Anthropic(api_key=api_key)
+        thinking_content = ""
+        final_response = ""
+        thinking_tokens = 0
+        
+        with client.messages.stream(
+            model=model,
+            max_tokens=1100,
+            thinking={
+                "type": "enabled",
+                "budget_tokens": 1024
+            },
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        ) as stream:
+            block_types = {}
+            
+            for event in stream:
+                if event.type == "content_block_start":
+                    block_types[event.index] = event.content_block.type
+                    
+                    if event.content_block.type == "thinking":
+                        yield f"data: {json.dumps({'type': 'thinking_start'})}\n\n"
+                    elif event.content_block.type == "text":
+                        yield f"data: {json.dumps({'type': 'response_start'})}\n\n"
+                        
+                elif event.type == "content_block_delta":
+                    if hasattr(event, 'index') and event.index in block_types:
+                        block_type = block_types[event.index]
+                        
+                        # Handle thinking_delta events
+                        if event.delta.type == "thinking_delta":
+                            text_content = None
+                            if hasattr(event.delta, 'thinking'):
+                                text_content = event.delta.thinking
+                            elif hasattr(event.delta, 'text'):
+                                text_content = event.delta.text
+                            
+                            if text_content:
+                                thinking_content += text_content
+                                yield f"data: {json.dumps({'type': 'thinking_delta', 'content': text_content})}\n\n"
+                                await asyncio.sleep(0)  # Allow the event loop to process
+                                
+                        elif event.delta.type == "text_delta" and hasattr(event.delta, 'text'):
+                            if block_type == "thinking":
+                                # Fallback for any text_delta in thinking blocks
+                                thinking_content += event.delta.text
+                                yield f"data: {json.dumps({'type': 'thinking_delta', 'content': event.delta.text})}\n\n"
+                            else:
+                                final_response += event.delta.text
+                                yield f"data: {json.dumps({'type': 'response_delta', 'content': event.delta.text})}\n\n"
+                                
+                elif event.type == "content_block_stop":
+                    if hasattr(event, 'index') and event.index in block_types:
+                        block_type = block_types[event.index]
+                        if block_type == "thinking":
+                            yield f"data: {json.dumps({'type': 'thinking_end'})}\n\n"
+                        else:
+                            yield f"data: {json.dumps({'type': 'response_end'})}\n\n"
+                            
+                elif event.type == "message_stop":
+                    # Get usage information if available
+                    if hasattr(stream, 'response') and hasattr(stream.response, 'usage'):
+                        thinking_tokens = stream.response.usage.output_tokens
+                    break
+        
+        # Process the final response
+        move = final_response.strip()
+        result = {}
+        
+        # Check for special actions
+        if move.upper() == "RESIGN":
+            result = {"action": "resign", "thinking_tokens": thinking_tokens}
+        elif move.upper() == "DRAW_OFFER":
+            result = {"action": "draw_offer", "thinking_tokens": thinking_tokens}
+        else:
+            result = {"move": move, "thinking_tokens": thinking_tokens}
+        
+        # Send the final result
+        yield f"data: {json.dumps({'type': 'result', 'data': result})}\n\n"
+        yield "data: [DONE]\n\n"
+        
+    except Exception as e:
+        yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
 if __name__ == "__main__":
     import uvicorn

@@ -34,6 +34,8 @@ interface GameState {
     offeredBy: 'white' | 'black' | null;
   };
   awaitingDrawResponse: boolean;
+  thinkingOutput: string;
+  isStreaming: boolean;
 }
 
 const formatTime = (milliseconds: number): string => {
@@ -65,168 +67,245 @@ const ChessGame: React.FC = () => {
       offered: false,
       offeredBy: null
     },
-    awaitingDrawResponse: false
+    awaitingDrawResponse: false,
+    thinkingOutput: '',
+    isStreaming: false
   });
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const thinkingOutputRef = useRef<string>('');
+  const thinkingOutputBoxRef = useRef<HTMLDivElement>(null);
 
   const makeMove = useCallback(async (model: string, player: 'white' | 'black') => {
-    setGameState(prev => {
-      // Prevent duplicate calls
-      if (prev.isGameOver || prev.isThinking) {
-        return prev;
-      }
+    // Prevent duplicate calls
+    if (gameState.isGameOver || gameState.isThinking) {
+      return;
+    }
 
-      // Cancel any existing request
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
+    // Cancel any existing request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
 
-      // Create new AbortController for this request
-      abortControllerRef.current = new AbortController();
+    // Create new AbortController for this request
+    abortControllerRef.current = new AbortController();
 
-      // Set thinking state and capture current state for API call
-      const currentFen = prev.game.fen();
-      const currentHistory = prev.game.history();
-      const startTime = Date.now();
+    // Set thinking state and capture current state for API call
+    const currentFen = gameState.game.fen();
+    const currentHistory = gameState.game.history();
+    const startTime = Date.now();
+    const isAnthropicModel = model.includes('claude');
+    
+    console.log('Starting move for', player, 'with history:', currentHistory);
+    
+    // Set initial thinking state and clear previous thinking output
+    setGameState(prev => ({ 
+      ...prev, 
+      isThinking: true,
+      thinkingOutput: '',
+      isStreaming: isAnthropicModel
+    }));
+    
+    // Reset thinking output ref
+    thinkingOutputRef.current = '';
+    
+    // Set up periodic updates for thinking output
+    let updateInterval: NodeJS.Timeout | null = null;
+    if (isAnthropicModel) {
+      updateInterval = setInterval(() => {
+        setGameState(prev => ({
+          ...prev,
+          thinkingOutput: thinkingOutputRef.current
+        }));
+      }, 50); // Update UI every 50ms
+    }
+
+    // Make API call
+    try {
+      const backendUrl = process.env.REACT_APP_BACKEND_API_BASE_URL || 'http://localhost:8000';
       
-      console.log('Starting move for', player, 'with history:', currentHistory);
+      // Use streaming endpoint
+      const response = await fetch(`${backendUrl}/get_move_stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: model,
+          game_state: currentFen,
+          move_history: currentHistory
+        }),
+        signal: abortControllerRef.current?.signal
+      });
 
-      // Make API call
-      (async () => {
+      if (response.ok && response.body) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        
         try {
-          const backendUrl = process.env.REACT_APP_BACKEND_API_BASE_URL || 'http://localhost:8000';
-          const response = await fetch(`${backendUrl}/get_move`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              model: model,
-              game_state: currentFen,
-              move_history: currentHistory
-            }),
-            signal: abortControllerRef.current?.signal
-          });
-
-          if (response.ok) {
-            const data = await response.json();
-            const endTime = Date.now();
-            const moveTime = endTime - startTime;
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
             
-            setGameState(prevState => {
-              // Double-check we're still in the right state
-              if (prevState.isGameOver || !prevState.isThinking) {
-                return prevState;
-              }
-
-              // Handle special actions
-              if (data.action === 'resign') {
-                const winner = player === 'white' ? 'Black' : 'White';
-                return {
-                  ...prevState,
-                  isGameOver: true,
-                  gameResult: `${player === 'white' ? 'White' : 'Black'} resigned. ${winner} wins!`,
-                  isThinking: false,
-                  moveThinkingTokens: [...prevState.moveThinkingTokens, data.thinking_tokens || 0],
-                  moveTimes: [...prevState.moveTimes, moveTime]
-                };
-              }
-
-              if (data.action === 'draw_offer') {
-                return {
-                  ...prevState,
-                  drawOffer: {
-                    offered: true,
-                    offeredBy: player
-                  },
-                  awaitingDrawResponse: true,
-                  isThinking: false,
-                  moveThinkingTokens: [...prevState.moveThinkingTokens, data.thinking_tokens || 0],
-                  moveTimes: [...prevState.moveTimes, moveTime]
-                };
-              }
-
-              // Handle regular moves
-              if (data.move) {
-                // Create new game and replay history to preserve move history
-                const newGame = new Chess();
-                const history = prevState.game.history();
-                
-                // Replay all moves to preserve history
-                for (const move of history) {
-                  newGame.move(move);
-                }
-                
-                console.log('Before move - History:', prevState.game.history());
-                console.log('Making move:', data.move);
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines[lines.length - 1];
+            
+            for (let i = 0; i < lines.length - 1; i++) {
+              const line = lines[i].trim();
+              if (line.startsWith('data: ')) {
+                const dataStr = line.substring(6);
+                if (dataStr === '[DONE]') continue;
                 
                 try {
-                  const move = newGame.move(data.move);
+                  const event = JSON.parse(dataStr);
                   
-                  if (move) {
-                    console.log('After move - History:', newGame.history());
+                  if (event.type === 'thinking_delta') {
+                    thinkingOutputRef.current += event.content;
+                  } else if (event.type === 'thinking_end') {
+                    // Thinking is done - ensure final update
+                    setGameState(prev => ({
+                      ...prev,
+                      thinkingOutput: thinkingOutputRef.current
+                    }));
+                  } else if (event.type === 'result') {
+                    // Clear the update interval
+                    if (updateInterval) {
+                      clearInterval(updateInterval);
+                    }
                     
-                    const isGameOver = newGame.isGameOver();
-                    let gameResult = null;
-                    
-                    if (isGameOver) {
-                      if (newGame.isCheckmate()) {
-                        gameResult = `${player === 'white' ? 'White' : 'Black'} wins by checkmate!`;
-                      } else if (newGame.isDraw()) {
-                        gameResult = 'Game ends in a draw!';
+                    const endTime = Date.now();
+                    const moveTime = endTime - startTime;
+                    const data = event.data;
+                        
+                    setGameState(prevState => {
+                      // Double-check we're still in the right state
+                      if (prevState.isGameOver || !prevState.isThinking) {
+                        return prevState;
                       }
-                    }
 
-                    // Update captured pieces if a piece was captured
-                    let updatedCapturedPieces = { ...prevState.capturedPieces };
-                    if (move.captured) {
-                      const capturedBy = player === 'white' ? 'white' : 'black';
-                      updatedCapturedPieces[capturedBy] = [...updatedCapturedPieces[capturedBy], move.captured];
-                    }
+                      // Handle special actions
+                      if (data.action === 'resign') {
+                        const winner = player === 'white' ? 'Black' : 'White';
+                        return {
+                          ...prevState,
+                          isGameOver: true,
+                          gameResult: `${player === 'white' ? 'White' : 'Black'} resigned. ${winner} wins!`,
+                          isThinking: false,
+                          isStreaming: false,
+                          moveThinkingTokens: [...prevState.moveThinkingTokens, data.thinking_tokens || 0],
+                          moveTimes: [...prevState.moveTimes, moveTime]
+                        };
+                      }
 
-                    // Update thinking tokens and move times
-                    const updatedThinkingTokens = [...prevState.moveThinkingTokens, data.thinking_tokens || 0];
-                    const updatedMoveTimes = [...prevState.moveTimes, moveTime];
+                      if (data.action === 'draw_offer') {
+                        return {
+                          ...prevState,
+                          drawOffer: {
+                            offered: true,
+                            offeredBy: player
+                          },
+                          awaitingDrawResponse: true,
+                          isThinking: false,
+                          isStreaming: false,
+                          moveThinkingTokens: [...prevState.moveThinkingTokens, data.thinking_tokens || 0],
+                          moveTimes: [...prevState.moveTimes, moveTime]
+                        };
+                      }
 
-                    return {
-                      ...prevState,
-                      game: newGame,
-                      currentPlayer: prevState.currentPlayer === 'white' ? 'black' : 'white',
-                      isGameOver,
-                      gameResult,
-                      isThinking: false,
-                      capturedPieces: updatedCapturedPieces,
-                      moveThinkingTokens: updatedThinkingTokens,
-                      moveTimes: updatedMoveTimes
-                    };
-                  } else {
-                    console.error('Invalid move returned:', data.move);
-                    return { ...prevState, isThinking: false };
+                      // Handle regular moves
+                      if (data.move) {
+                        // Create new game and replay history to preserve move history
+                        const newGame = new Chess();
+                        const history = prevState.game.history();
+                        
+                        // Replay all moves to preserve history
+                        for (const move of history) {
+                          newGame.move(move);
+                        }
+                        
+                        console.log('Before move - History:', prevState.game.history());
+                        console.log('Making move:', data.move);
+                        
+                        try {
+                          const move = newGame.move(data.move);
+                          
+                          if (move) {
+                            console.log('After move - History:', newGame.history());
+                            
+                            const isGameOver = newGame.isGameOver();
+                            let gameResult = null;
+                            
+                            if (isGameOver) {
+                              if (newGame.isCheckmate()) {
+                                gameResult = `${player === 'white' ? 'White' : 'Black'} wins by checkmate!`;
+                              } else if (newGame.isDraw()) {
+                                gameResult = 'Game ends in a draw!';
+                              }
+                            }
+
+                            // Update captured pieces if a piece was captured
+                            let updatedCapturedPieces = { ...prevState.capturedPieces };
+                            if (move.captured) {
+                              const capturedBy = player === 'white' ? 'white' : 'black';
+                              updatedCapturedPieces[capturedBy] = [...updatedCapturedPieces[capturedBy], move.captured];
+                            }
+
+                            // Update thinking tokens and move times
+                            const updatedThinkingTokens = [...prevState.moveThinkingTokens, data.thinking_tokens || 0];
+                            const updatedMoveTimes = [...prevState.moveTimes, moveTime];
+
+                            return {
+                              ...prevState,
+                              game: newGame,
+                              currentPlayer: prevState.currentPlayer === 'white' ? 'black' : 'white',
+                              isGameOver,
+                              gameResult,
+                              isThinking: false,
+                              isStreaming: false,
+                              capturedPieces: updatedCapturedPieces,
+                              moveThinkingTokens: updatedThinkingTokens,
+                              moveTimes: updatedMoveTimes
+                            };
+                          } else {
+                            console.error('Invalid move returned:', data.move);
+                            return { ...prevState, isThinking: false, isStreaming: false };
+                          }
+                        } catch (moveError) {
+                          console.error('Error making move:', data.move, moveError);
+                          return { ...prevState, isThinking: false, isStreaming: false };
+                        }
+                      }
+
+                      return { ...prevState, isThinking: false, isStreaming: false };
+                    });
                   }
-                } catch (moveError) {
-                  console.error('Error making move:', data.move, moveError);
-                  return { ...prevState, isThinking: false };
+                } catch (e) {
+                  console.error('Error parsing SSE event:', e);
                 }
               }
-
-              return { ...prevState, isThinking: false };
-            });
+            }
           }
-        } catch (error) {
-          // Don't update state if the request was aborted
-          if (error instanceof Error && error.name === 'AbortError') {
-            console.log('Move request was cancelled');
-            return;
-          }
-          console.error('Error making move:', error);
-          setGameState(prevState => ({ ...prevState, isThinking: false }));
+        } catch (e) {
+          console.error('Error reading stream:', e);
         }
-      })();
-
-      return { ...prev, isThinking: true };
-    });
-  }, []);
+      }
+    } catch (error) {
+      // Clear the update interval
+      if (updateInterval) {
+        clearInterval(updateInterval);
+      }
+      
+      // Don't update state if the request was aborted
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('Move request was cancelled');
+        return;
+      }
+      console.error('Error making move:', error);
+      setGameState(prevState => ({ ...prevState, isThinking: false, isStreaming: false }));
+    }
+  }, [gameState.isGameOver, gameState.isThinking, gameState.game]);
 
   const handleDrawResponse = useCallback(async (model: string, player: 'white' | 'black') => {
     setGameState(prev => {
@@ -351,9 +430,18 @@ const ChessGame: React.FC = () => {
         offered: false,
         offeredBy: null
       },
-      awaitingDrawResponse: false
+      awaitingDrawResponse: false,
+      thinkingOutput: '',
+      isStreaming: false
     }));
   }, [gameState.whiteModel, gameState.blackModel]);
+
+  // Auto-scroll thinking output
+  React.useEffect(() => {
+    if (thinkingOutputBoxRef.current && gameState.isStreaming) {
+      thinkingOutputBoxRef.current.scrollTop = thinkingOutputBoxRef.current.scrollHeight;
+    }
+  }, [gameState.thinkingOutput, gameState.isStreaming]);
 
   // Auto-play when it's the next player's turn (only in auto mode)
   React.useEffect(() => {
@@ -403,7 +491,9 @@ const ChessGame: React.FC = () => {
         offered: false,
         offeredBy: null
       },
-      awaitingDrawResponse: false
+      awaitingDrawResponse: false,
+      thinkingOutput: '',
+      isStreaming: false
     });
   };
 
@@ -550,13 +640,41 @@ const ChessGame: React.FC = () => {
       </div>
 
       <div style={{ textAlign: 'center' }}>
-        {gameState.isThinking && (
-          <p style={{ fontSize: '18px', color: '#666' }}>
-            {gameState.awaitingDrawResponse 
-              ? `${gameState.currentPlayer === 'white' ? gameState.whiteModel : gameState.blackModel} is deciding on the draw offer...`
-              : `${gameState.currentPlayer === 'white' ? gameState.whiteModel : gameState.blackModel} is thinking...`
-            }
-          </p>
+        {gameState.isGameStarted && !gameState.isGameOver && (
+          <div 
+            ref={thinkingOutputBoxRef}
+            style={{
+              marginTop: '10px',
+              marginBottom: '10px',
+              width: '800px',
+              maxWidth: '90%',
+              margin: '10px auto',
+              backgroundColor: '#f5f5f5',
+              border: '1px solid #ddd',
+              borderRadius: '8px',
+              padding: '15px',
+              textAlign: 'left',
+              height: '150px',
+              overflowY: 'auto',
+              transition: 'opacity 0.3s ease',
+              opacity: gameState.thinkingOutput ? 1 : 0.7,
+              scrollbarWidth: 'thin',
+              scrollbarColor: '#888 #f5f5f5'
+            }}
+          >
+            <h4 style={{ margin: '0 0 10px 0', color: '#333', fontSize: '16px' }}>🤔 Thinking Process:</h4>
+            <pre style={{ 
+              whiteSpace: 'pre-wrap', 
+              wordWrap: 'break-word',
+              fontFamily: 'Consolas, Monaco, monospace',
+              fontSize: '13px',
+              lineHeight: '1.5',
+              margin: 0,
+              color: gameState.thinkingOutput ? '#555' : '#999'
+            }}>
+              {gameState.thinkingOutput || 'Waiting for model to think...'}
+            </pre>
+          </div>
         )}
         {gameState.drawOffer.offered && !gameState.isThinking && (
           <div style={{ 
@@ -569,21 +687,16 @@ const ChessGame: React.FC = () => {
             border: '2px solid #FF9800',
             margin: '10px 0'
           }}>
-            🤝 {gameState.drawOffer.offeredBy === 'white' ? gameState.whiteModel : gameState.blackModel} has offered a draw!
+            🤝 {gameState.drawOffer.offeredBy === 'white' ? 'White' : 'Black'} has offered a draw!
             <br />
             <span style={{ fontSize: '14px', fontWeight: 'normal' }}>
-              Waiting for {gameState.drawOffer.offeredBy === 'white' ? gameState.blackModel : gameState.whiteModel} to respond...
+              Waiting for {gameState.drawOffer.offeredBy === 'white' ? 'Black' : 'White'} to respond...
             </span>
           </div>
         )}
         {gameState.gameResult && (
           <p style={{ fontSize: '20px', fontWeight: 'bold', color: '#333' }}>
             {gameState.gameResult}
-          </p>
-        )}
-        {gameState.isGameStarted && !gameState.isGameOver && !gameState.isThinking && !gameState.drawOffer.offered && (
-          <p style={{ fontSize: '18px' }}>
-            Current turn: {gameState.currentPlayer === 'white' ? gameState.whiteModel : gameState.blackModel}
           </p>
         )}
       </div>
