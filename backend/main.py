@@ -222,7 +222,14 @@ async def call_anthropic_api(model: str, prompt: str):
             move = response.content[0].text.strip()
         
         # Extract thinking tokens
-        thinking_tokens = response.usage.output_tokens if hasattr(response, 'usage') and hasattr(response.usage, 'output_tokens') else 0
+        # For Anthropic API, thinking tokens aren't separately reported in usage
+        # We need to count them from the thinking content blocks
+        thinking_tokens = 0
+        for content_block in response.content:
+            if hasattr(content_block, 'type') and content_block.type == 'thinking':
+                if hasattr(content_block, 'text'):
+                    # Rough word count estimation for tokens
+                    thinking_tokens = len(content_block.text.split())
         
         # Check for special actions
         if move.upper() == "RESIGN":
@@ -510,9 +517,10 @@ async def stream_anthropic_move(model: str, prompt: str) -> AsyncGenerator[str, 
                             yield f"data: {json.dumps({'type': 'response_end'})}\n\n"
                             
                 elif event.type == "message_stop":
-                    # Get usage information if available
-                    if hasattr(stream, 'response') and hasattr(stream.response, 'usage'):
-                        thinking_tokens = stream.response.usage.output_tokens
+                    # For Anthropic streaming, thinking tokens aren't reported in usage
+                    # Count from the captured thinking content
+                    if thinking_content:
+                        thinking_tokens = len(thinking_content.split())
                     break
         
         # Process the final response
