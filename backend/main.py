@@ -117,7 +117,7 @@ async def get_move_stream(request: Dict[str, Any]):
 
     Respond with either a move, "RESIGN", or "DRAW_OFFER"."""
 
-    # Stream for Anthropic and Gemini models
+    # Stream for Anthropic, Gemini, and Grok models
     if request["model"] in ["claude-opus-4-20250514", "claude-sonnet-4-20250514"]:
         return StreamingResponse(
             stream_anthropic_move(request["model"], prompt),
@@ -128,15 +128,16 @@ async def get_move_stream(request: Dict[str, Any]):
             stream_gemini_move(request["model"], prompt),
             media_type="text/event-stream"
         )
+    elif request["model"] == "grok-3-mini":
+        return StreamingResponse(
+            stream_grok_move(request["model"], prompt),
+            media_type="text/event-stream"
+        )
     else:
-        # For non-Anthropic models, return a non-streaming response wrapped as SSE
+        # For non-streaming models, return a non-streaming response wrapped as SSE
         async def non_streaming_wrapper():
             if request["model"] == "o4-mini":
                 result = await call_openai_api(request["model"], prompt)
-            elif request["model"] in ["gemini-2.5-pro-preview-05-06", "gemini-2.5-flash-preview-05-20"]:
-                result = await call_gemini_api(request["model"], prompt)
-            elif request["model"] == "grok-3-mini":
-                result = await call_xai_api(request["model"], prompt)
             
             # Send the result as a single SSE event
             yield f"data: {json.dumps({'type': 'result', 'data': result})}\n\n"
@@ -513,6 +514,94 @@ async def stream_anthropic_move(model: str, prompt: str) -> AsyncGenerator[str, 
                     if hasattr(stream, 'response') and hasattr(stream.response, 'usage'):
                         thinking_tokens = stream.response.usage.output_tokens
                     break
+        
+        # Process the final response
+        move = final_response.strip()
+        result = {}
+        
+        # Check for special actions
+        if move.upper() == "RESIGN":
+            result = {"action": "resign", "thinking_tokens": thinking_tokens}
+        elif move.upper() == "DRAW_OFFER":
+            result = {"action": "draw_offer", "thinking_tokens": thinking_tokens}
+        else:
+            result = {"move": move, "thinking_tokens": thinking_tokens}
+        
+        # Send the final result
+        yield f"data: {json.dumps({'type': 'result', 'data': result})}\n\n"
+        yield "data: [DONE]\n\n"
+        
+    except Exception as e:
+        yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+async def stream_grok_move(model: str, prompt: str) -> AsyncGenerator[str, None]:
+    """Stream Grok API response with thinking outputs."""
+    api_key = os.getenv("XAI_API_KEY")
+    if not api_key:
+        yield f"data: {json.dumps({'type': 'error', 'message': 'XAI_API_KEY not configured'})}\n\n"
+        return
+
+    try:
+        client = OpenAI(
+            base_url="https://api.x.ai/v1",
+            api_key=api_key
+        )
+        
+        thinking_content = ""
+        final_response = ""
+        thinking_tokens = 0
+        
+        # Indicate we're starting
+        yield f"data: {json.dumps({'type': 'thinking_start'})}\n\n"
+        
+        # Create streaming response
+        stream = client.chat.completions.create(
+            model=model,
+            reasoning_effort="low",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a chess AI. Provide only the move in standard algebraic notation."
+                },
+                {
+                    "role": "user", 
+                    "content": prompt
+                }
+            ],
+            temperature=0.7,
+            stream=True
+        )
+        
+        in_thinking = True
+        
+        for chunk in stream:
+            if chunk.choices and len(chunk.choices) > 0:
+                choice = chunk.choices[0]
+                
+                # Handle reasoning content
+                if hasattr(choice.delta, 'reasoning_content') and choice.delta.reasoning_content:
+                    thinking_content += choice.delta.reasoning_content
+                    yield f"data: {json.dumps({'type': 'thinking_delta', 'content': choice.delta.reasoning_content})}\n\n"
+                    await asyncio.sleep(0)  # Allow event loop to process
+                
+                # Handle final response content
+                if hasattr(choice.delta, 'content') and choice.delta.content:
+                    # If we were showing reasoning, transition to response
+                    if thinking_content and not final_response and in_thinking:
+                        yield f"data: {json.dumps({'type': 'thinking_end'})}\n\n"
+                        yield f"data: {json.dumps({'type': 'response_start'})}\n\n"
+                        in_thinking = False
+                    
+                    final_response += choice.delta.content
+                    yield f"data: {json.dumps({'type': 'response_delta', 'content': choice.delta.content})}\n\n"
+        
+        # End response if we have one
+        if final_response:
+            yield f"data: {json.dumps({'type': 'response_end'})}\n\n"
+        
+        # Extract thinking tokens if available (this might need adjustment based on actual API response)
+        # The usage data is typically available after streaming completes
+        thinking_tokens = len(thinking_content.split()) if thinking_content else 0
         
         # Process the final response
         move = final_response.strip()

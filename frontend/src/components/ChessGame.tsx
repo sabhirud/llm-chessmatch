@@ -96,7 +96,8 @@ const ChessGame: React.FC = () => {
     const startTime = Date.now();
     const isAnthropicModel = model.includes('claude');
     const isGeminiModel = model.includes('gemini');
-    const supportsStreaming = isAnthropicModel || isGeminiModel;
+    const isGrokModel = model === 'grok-3-mini';
+    const supportsStreaming = isAnthropicModel || isGeminiModel || isGrokModel;
     
     console.log('Starting move for', player, 'with history:', currentHistory);
     
