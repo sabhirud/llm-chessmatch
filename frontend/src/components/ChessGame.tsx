@@ -645,7 +645,6 @@ const ChessGame: React.FC = () => {
       <div style={{ textAlign: 'center' }}>
         {gameState.isGameStarted && !gameState.isGameOver && (
           <div 
-            ref={thinkingOutputBoxRef}
             style={{
               marginTop: '10px',
               marginBottom: '10px',
@@ -655,28 +654,48 @@ const ChessGame: React.FC = () => {
               backgroundColor: '#f5f5f5',
               border: '1px solid #ddd',
               borderRadius: '8px',
-              padding: '15px',
               textAlign: 'left',
               height: '150px',
-              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
               transition: 'opacity 0.3s ease',
               opacity: gameState.thinkingOutput ? 1 : 0.7,
-              scrollbarWidth: 'thin',
-              scrollbarColor: '#888 #f5f5f5'
+              overflow: 'hidden'
             }}
           >
-            <h4 style={{ margin: '0 0 10px 0', color: '#333', fontSize: '16px' }}>🤔 Thinking Process:</h4>
-            <pre style={{ 
-              whiteSpace: 'pre-wrap', 
-              wordWrap: 'break-word',
-              fontFamily: 'Consolas, Monaco, monospace',
-              fontSize: '13px',
-              lineHeight: '1.5',
-              margin: 0,
-              color: gameState.thinkingOutput ? '#555' : '#999'
+            <h4 style={{ 
+              margin: '0', 
+              color: '#333', 
+              fontSize: '16px',
+              padding: '15px 15px 10px 15px',
+              backgroundColor: '#f5f5f5',
+              borderBottom: '1px solid #e0e0e0',
+              flexShrink: 0
             }}>
-              {gameState.thinkingOutput || 'Waiting for model to think...'}
-            </pre>
+              Thinking Process for {gameState.currentPlayer === 'white' ? 'White' : 'Black'} ({gameState.currentPlayer === 'white' ? gameState.whiteModel : gameState.blackModel})
+            </h4>
+            <div 
+              ref={thinkingOutputBoxRef}
+              style={{
+                flex: 1,
+                overflowY: 'auto',
+                padding: '10px 15px 15px 15px',
+                scrollbarWidth: 'thin',
+                scrollbarColor: '#888 #f5f5f5'
+              }}
+            >
+              <pre style={{ 
+                whiteSpace: 'pre-wrap', 
+                wordWrap: 'break-word',
+                fontFamily: 'Consolas, Monaco, monospace',
+                fontSize: '13px',
+                lineHeight: '1.5',
+                margin: 0,
+                color: gameState.thinkingOutput ? '#555' : '#999'
+              }}>
+                {gameState.thinkingOutput || 'Waiting for model to think...'}
+              </pre>
+            </div>
           </div>
         )}
         {gameState.drawOffer.offered && !gameState.isThinking && (
