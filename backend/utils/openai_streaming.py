@@ -4,8 +4,15 @@ client = OpenAI()
 
 response = client.responses.create(
     model="o4-mini", 
-    input="What is the meaning of life?",
-    reasoning={"summary": "detailed"},
+    input="""You are a chess AI. Given the current game state, you can either:
+    1. Make a chess move in standard algebraic notation (e.g., "e4", "Nf3", "O-O")
+    2. Resign by responding with exactly "RESIGN"
+    3. Offer a draw by responding with exactly "DRAW_OFFER"
+
+    Game State (FEN): rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
+
+    Respond with either a move, "RESIGN", or "DRAW_OFFER".""",
+    reasoning={"summary": "detailed", "effort": "high"},
     stream=True
 )
 
