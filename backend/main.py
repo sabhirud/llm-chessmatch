@@ -133,18 +133,9 @@ async def get_move_stream(request: Dict[str, Any]):
             stream_grok_move(request["model"], prompt),
             media_type="text/event-stream"
         )
-    else:
-        # For non-streaming models, return a non-streaming response wrapped as SSE
-        async def non_streaming_wrapper():
-            if request["model"] == "o4-mini":
-                result = await call_openai_api(request["model"], prompt)
-            
-            # Send the result as a single SSE event
-            yield f"data: {json.dumps({'type': 'result', 'data': result})}\n\n"
-            yield "data: [DONE]\n\n"
-        
+    elif request["model"] == "o4-mini":
         return StreamingResponse(
-            non_streaming_wrapper(),
+            stream_openai_move(request["model"], prompt),
             media_type="text/event-stream"
         )
 
@@ -610,6 +601,93 @@ async def stream_grok_move(model: str, prompt: str) -> AsyncGenerator[str, None]
         # Extract thinking tokens if available (this might need adjustment based on actual API response)
         # The usage data is typically available after streaming completes
         thinking_tokens = len(thinking_content.split()) if thinking_content else 0
+        
+        # Process the final response
+        move = final_response.strip()
+        result = {}
+        
+        # Check for special actions
+        if move.upper() == "RESIGN":
+            result = {"action": "resign", "thinking_tokens": thinking_tokens}
+        elif move.upper() == "DRAW_OFFER":
+            result = {"action": "draw_offer", "thinking_tokens": thinking_tokens}
+        else:
+            result = {"move": move, "thinking_tokens": thinking_tokens}
+        
+        # Send the final result
+        yield f"data: {json.dumps({'type': 'result', 'data': result})}\n\n"
+        yield "data: [DONE]\n\n"
+        
+    except Exception as e:
+        yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+async def stream_openai_move(model: str, prompt: str) -> AsyncGenerator[str, None]:
+    """Stream OpenAI o4-mini API response with thinking outputs."""
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        yield f"data: {json.dumps({'type': 'error', 'message': 'OPENAI_API_KEY not configured'})}\n\n"
+        return
+
+    try:
+        client = OpenAI(api_key=api_key)
+        
+        reasoning_content = ""
+        final_response = ""
+        thinking_tokens = 0
+        reasoning_started = False
+        answer_started = False
+        
+        # Create streaming response for o4-mini
+        response = client.responses.create(
+            model=model,
+            input=prompt,
+            reasoning={
+                "summary": "detailed", 
+                "effort": "low"
+            },
+            stream=True
+        )
+        
+        # Process the stream events
+        for event in response:
+            if event.type == 'response.reasoning_summary_text.delta':
+                # Stream reasoning text in real time
+                if not reasoning_started:
+                    yield f"data: {json.dumps({'type': 'thinking_start'})}\n\n"
+                    reasoning_started = True
+                
+                reasoning_content += event.delta
+                yield f"data: {json.dumps({'type': 'thinking_delta', 'content': event.delta})}\n\n"
+                await asyncio.sleep(0)  # Allow event loop to process
+                
+            elif event.type == 'response.reasoning_summary_text.done':
+                # Reasoning is complete
+                yield f"data: {json.dumps({'type': 'thinking_end'})}\n\n"
+                
+            elif event.type == 'response.output_text.delta':
+                # Stream answer text in real time
+                if not answer_started:
+                    yield f"data: {json.dumps({'type': 'response_start'})}\n\n"
+                    answer_started = True
+                    
+                final_response += event.delta
+                yield f"data: {json.dumps({'type': 'response_delta', 'content': event.delta})}\n\n"
+            
+            elif event.type == 'response.output_text.done':
+                # Final answer is complete
+                yield f"data: {json.dumps({'type': 'response_end'})}\n\n"
+                
+            elif event.type == 'response.completed':
+                # Extract thinking tokens from usage
+                if hasattr(event, 'response') and hasattr(event.response, 'usage'):
+                    if hasattr(event.response.usage, 'output_tokens_details') and hasattr(event.response.usage.output_tokens_details, 'reasoning_tokens'):
+                        thinking_tokens = event.response.usage.output_tokens_details.reasoning_tokens
+                
+                # Workaround: If OpenAI streaming doesn't report thinking tokens correctly,
+                # estimate them from reasoning content length (roughly 4 chars per token)
+                if thinking_tokens == 0 and reasoning_content:
+                    thinking_tokens = max(1, len(reasoning_content) // 4)
+                break
         
         # Process the final response
         move = final_response.strip()

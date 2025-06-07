@@ -97,7 +97,8 @@ const ChessGame: React.FC = () => {
     const isAnthropicModel = model.includes('claude');
     const isGeminiModel = model.includes('gemini');
     const isGrokModel = model === 'grok-3-mini';
-    const supportsStreaming = isAnthropicModel || isGeminiModel || isGrokModel;
+    const isOpenAIModel = model === 'o4-mini';
+    const supportsStreaming = isAnthropicModel || isGeminiModel || isGrokModel || isOpenAIModel;
     
     console.log('Starting move for', player, 'with history:', currentHistory);
     
