@@ -23,6 +23,7 @@ interface GameState {
   isThinking: boolean;
   gameResult: string | null;
   gameMode: 'auto' | 'manual';
+  isPaused: boolean;
   capturedPieces: {
     white: string[];
     black: string[];
@@ -57,6 +58,7 @@ const ChessGame: React.FC = () => {
     isThinking: false,
     gameResult: null,
     gameMode: 'manual',
+    isPaused: false,
     capturedPieces: {
       white: [],
       black: []
@@ -447,9 +449,9 @@ const ChessGame: React.FC = () => {
     }
   }, [gameState.thinkingOutput, gameState.isStreaming]);
 
-  // Auto-play when it's the next player's turn (only in auto mode)
+  // Auto-play when it's the next player's turn (only in auto mode and not paused)
   React.useEffect(() => {
-    if (gameState.gameMode === 'auto' && gameState.isGameStarted && !gameState.isGameOver && !gameState.isThinking) {
+    if (gameState.gameMode === 'auto' && gameState.isGameStarted && !gameState.isGameOver && !gameState.isThinking && !gameState.isPaused) {
       const currentModel = gameState.currentPlayer === 'white' ? gameState.whiteModel : gameState.blackModel;
       if (currentModel) {
         // If awaiting draw response, handle that instead of making a move
@@ -466,7 +468,7 @@ const ChessGame: React.FC = () => {
         }
       }
     }
-  }, [gameState.gameMode, gameState.currentPlayer, gameState.isGameStarted, gameState.isGameOver, gameState.isThinking, gameState.awaitingDrawResponse, gameState.whiteModel, gameState.blackModel, makeMove, handleDrawResponse]);
+  }, [gameState.gameMode, gameState.currentPlayer, gameState.isGameStarted, gameState.isGameOver, gameState.isThinking, gameState.isPaused, gameState.awaitingDrawResponse, gameState.whiteModel, gameState.blackModel, makeMove, handleDrawResponse]);
 
   const resetGame = () => {
     // Cancel any in-flight requests
@@ -485,6 +487,7 @@ const ChessGame: React.FC = () => {
       isThinking: false,
       gameResult: null,
       gameMode: 'manual',
+      isPaused: false,
       capturedPieces: {
         white: [],
         black: []
@@ -499,6 +502,13 @@ const ChessGame: React.FC = () => {
       thinkingOutput: '',
       isStreaming: false
     });
+  };
+
+  const togglePause = () => {
+    setGameState(prev => ({
+      ...prev,
+      isPaused: !prev.isPaused
+    }));
   };
 
   const pickRandomModels = () => {
@@ -614,6 +624,23 @@ const ChessGame: React.FC = () => {
                   }}
                 >
                   {gameState.awaitingDrawResponse ? 'Respond to Draw' : 'Next Move'}
+                </button>
+              )}
+              {gameState.gameMode === 'auto' && (
+                <button
+                  onClick={togglePause}
+                  disabled={gameState.isGameOver}
+                  style={{
+                    padding: '10px 15px',
+                    fontSize: '14px',
+                    backgroundColor: gameState.isGameOver ? '#ccc' : (gameState.isPaused ? '#FF9800' : '#2196F3'),
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '5px',
+                    cursor: gameState.isGameOver ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {gameState.isPaused ? 'Resume' : 'Pause'}
                 </button>
               )}
               <button
