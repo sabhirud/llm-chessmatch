@@ -11,6 +11,56 @@ from anthropic import Anthropic
 from google import genai
 from google.genai import types
 
+CHESS_MOVE_PROMPT_TEMPLATE = """You are a chess engine tasked with finding the best valid move given a current board position and move history. 
+
+<game_state_fen>
+{game_state}
+</game_state_fen>
+
+<move_history>
+{move_history}
+</move_history>
+
+Your task is to analyze the given board state and move history, then return either:
+1. The best valid move in standard chess notation (e.g., "e4", "Nf3", "O-O")
+2. The word "DRAW" to offer a draw
+3. The word "RESIGN" to resign the game
+
+Follow these steps to complete the task:
+
+1. Analyze the board state given in FEN notation. Consider the position of all pieces, potential threats, and opportunities.
+
+2. Review the move history to understand the flow of the game and any recurring patterns or strategies.
+
+3. Generate a list of possible legal moves, considering:
+- Piece mobility and potential captures
+- Defensive moves to protect vulnerable pieces
+- Attacking moves to threaten the opponent's pieces or king
+- Positional improvements and control of key squares
+
+4. Evaluate each possible move based on:
+- Material balance
+- Piece activity and coordination
+- King safety
+- Pawn structure
+- Control of the center
+- Potential for future tactics or combinations
+
+5. Consider offering a draw if:
+- The position is clearly equal with no winning chances for either side
+- There has been no progress in the last several moves
+- The material on the board is insufficient for either side to force a win
+
+6. Consider resigning if:
+- There is a significant material disadvantage with no compensation
+- The position is hopeless, with no reasonable defensive resources
+- Checkmate is unavoidable within a few moves
+
+7. If neither a draw offer nor resignation is appropriate, determine the best move based on your analysis.
+
+Respond with either a move, "RESIGN", or "DRAW_OFFER". Do not respond with any other justification or commentary.
+"""
+
 app = FastAPI()
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 
@@ -107,17 +157,11 @@ async def get_move_stream(request: Dict[str, Any]):
     
     move_history_str = ", ".join(request["move_history"]) if request["move_history"] else "No moves yet"
     
-    prompt = f"""You are a chess AI. Given the current game state and move history, you can either:
-1. Make a chess move in standard algebraic notation (e.g., "e4", "Nf3", "O-O")
-2. Resign by responding with exactly "RESIGN"
-3. Offer a draw by responding with exactly "DRAW_OFFER"
+    prompt = CHESS_MOVE_PROMPT_TEMPLATE.format(
+        game_state=request["game_state"],
+        move_history=move_history_str
+    )
 
-    Game State (FEN): {request["game_state"]}
-    Move History: {move_history_str}
-
-    Respond with either a move, "RESIGN", or "DRAW_OFFER"."""
-
-    # Stream for Anthropic, Gemini, and Grok models
     if request["model"] in ["claude-opus-4-20250514", "claude-sonnet-4-20250514"]:
         return StreamingResponse(
             stream_anthropic_move(request["model"], prompt),
@@ -162,16 +206,10 @@ async def get_move(request: Dict[str, Any]):
     
     move_history_str = ", ".join(request["move_history"]) if request["move_history"] else "No moves yet"
     
-    
-    prompt = f"""You are a chess AI. Given the current game state and move history, you can either:
-1. Make a chess move in standard algebraic notation (e.g., "e4", "Nf3", "O-O")
-2. Resign by responding with exactly "RESIGN"
-3. Offer a draw by responding with exactly "DRAW_OFFER"
-
-    Game State (FEN): {request["game_state"]}
-    Move History: {move_history_str}
-
-    Respond with either a move, "RESIGN", or "DRAW_OFFER"."""
+    prompt = CHESS_MOVE_PROMPT_TEMPLATE.format(
+        game_state=request["game_state"],
+        move_history=move_history_str
+    )
 
     if request["model"] in ["claude-opus-4-20250514", "claude-sonnet-4-20250514"]:
         return await call_anthropic_api(request["model"], prompt)

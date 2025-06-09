@@ -108,12 +108,13 @@ const ChessGame: React.FC = () => {
     console.log('Starting move for', player, 'with history:', currentHistory);
     
     // Set initial thinking state and clear previous thinking output
+    // Don't clear error message if there's currently one showing (let the timeout handle it)
     setGameState(prev => ({ 
       ...prev, 
       isThinking: true,
       thinkingOutput: '',
       isStreaming: supportsStreaming,
-      errorMessage: null
+      errorMessage: prev.errorMessage // Keep existing error message if any
     }));
     
     // Reset thinking output ref
@@ -291,7 +292,7 @@ const ChessGame: React.FC = () => {
                           }
                           errorTimeoutRef.current = setTimeout(() => {
                             setGameState(prev => ({ ...prev, errorMessage: null }));
-                          }, 5000);
+                          }, 3000);
                           
                           return { 
                             ...prevState, 
