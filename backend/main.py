@@ -458,6 +458,7 @@ async def stream_anthropic_move(model: str, prompt: str) -> AsyncGenerator[str, 
                 "type": "enabled",
                 "budget_tokens": 1024
             },
+            system="You are a chess AI. When thinking is enabled, use your thinking to analyze the position thoroughly, then provide only the chess move (or RESIGN/DRAW_OFFER) in your response without any explanation.",
             messages=[
                 {"role": "user", "content": prompt}
             ]
@@ -514,7 +515,7 @@ async def stream_anthropic_move(model: str, prompt: str) -> AsyncGenerator[str, 
                         thinking_tokens = len(thinking_content.split())
                     break
         
-        # Process the final response
+        # Process the final response - our prompt instructs Claude to return only the move
         move = final_response.strip()
         result = {}
         
