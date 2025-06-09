@@ -296,7 +296,7 @@ const ChessGame: React.FC = () => {
                             ...prevState, 
                             isThinking: false, 
                             isStreaming: false, 
-                            errorMessage: `Invalid move ${data.move} by ${player === 'white' ? 'White' : 'Black'} (${model}), retrying request`
+                            errorMessage: `Invalid move by ${player === 'white' ? 'White' : 'Black'} (${model}): ${data.move}`
                           };
                         }
                       }
