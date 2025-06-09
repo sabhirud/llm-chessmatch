@@ -8,7 +8,7 @@ const AboutPage: React.FC = () => {
       </p>
 
       <p>
-        The app has an "Auto" mode, where the game automatically sends requests to models for each turn, or "Manual" mode, where the user can decide when to kick off the next turn.
+        The app automatically sends requests to models for each turn, with the ability to pause and resume gameplay as needed.
       </p>
 
       <p>

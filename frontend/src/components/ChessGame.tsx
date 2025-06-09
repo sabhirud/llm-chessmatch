@@ -22,7 +22,6 @@ interface GameState {
   blackModel: string;
   isThinking: boolean;
   gameResult: string | null;
-  gameMode: 'auto' | 'manual';
   isPaused: boolean;
   capturedPieces: {
     white: string[];
@@ -58,7 +57,6 @@ const ChessGame: React.FC = () => {
     blackModel: '',
     isThinking: false,
     gameResult: null,
-    gameMode: 'manual',
     isPaused: false,
     capturedPieces: {
       white: [],
@@ -469,9 +467,9 @@ const ChessGame: React.FC = () => {
     }
   }, [gameState.thinkingOutput, gameState.isStreaming]);
 
-  // Auto-play when it's the next player's turn (only in auto mode and not paused)
+  // Auto-play when it's the next player's turn (when not paused)
   React.useEffect(() => {
-    if (gameState.gameMode === 'auto' && gameState.isGameStarted && !gameState.isGameOver && !gameState.isThinking && !gameState.isPaused) {
+    if (gameState.isGameStarted && !gameState.isGameOver && !gameState.isThinking && !gameState.isPaused) {
       const currentModel = gameState.currentPlayer === 'white' ? gameState.whiteModel : gameState.blackModel;
       if (currentModel) {
         // If awaiting draw response, handle that instead of making a move
@@ -488,7 +486,7 @@ const ChessGame: React.FC = () => {
         }
       }
     }
-  }, [gameState.gameMode, gameState.currentPlayer, gameState.isGameStarted, gameState.isGameOver, gameState.isThinking, gameState.isPaused, gameState.awaitingDrawResponse, gameState.whiteModel, gameState.blackModel, makeMove, handleDrawResponse]);
+  }, [gameState.currentPlayer, gameState.isGameStarted, gameState.isGameOver, gameState.isThinking, gameState.isPaused, gameState.awaitingDrawResponse, gameState.whiteModel, gameState.blackModel, makeMove, handleDrawResponse]);
 
   const resetGame = () => {
     // Cancel any in-flight requests
@@ -512,7 +510,6 @@ const ChessGame: React.FC = () => {
       blackModel: gameState.blackModel,
       isThinking: false,
       gameResult: null,
-      gameMode: 'manual',
       isPaused: false,
       capturedPieces: {
         white: [],
@@ -552,19 +549,6 @@ const ChessGame: React.FC = () => {
     }));
   };
 
-  const nextMove = () => {
-    if (gameState.gameMode === 'manual' && gameState.isGameStarted && !gameState.isGameOver && !gameState.isThinking) {
-      const currentModel = gameState.currentPlayer === 'white' ? gameState.whiteModel : gameState.blackModel;
-      if (currentModel) {
-        // If awaiting draw response, handle that instead of making a move
-        if (gameState.awaitingDrawResponse) {
-          handleDrawResponse(currentModel, gameState.currentPlayer);
-        } else {
-          makeMove(currentModel, gameState.currentPlayer);
-        }
-      }
-    }
-  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
@@ -600,24 +584,6 @@ const ChessGame: React.FC = () => {
               Pick Random Models
             </button>
           )}
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-            <label style={{ fontSize: '14px', color: '#666' }}>Mode:</label>
-            <select
-              value={gameState.gameMode}
-              onChange={(e) => setGameState(prev => ({ ...prev, gameMode: e.target.value as 'auto' | 'manual' }))}
-              disabled={gameState.isGameStarted}
-              style={{
-                padding: '5px 10px',
-                fontSize: '14px',
-                border: '1px solid #ccc',
-                borderRadius: '4px',
-                backgroundColor: gameState.isGameStarted ? '#f5f5f5' : 'white'
-              }}
-            >
-              <option value="auto">Auto</option>
-              <option value="manual">Manual</option>
-            </select>
-          </div>
           
           {!gameState.isGameStarted ? (
             <button
@@ -636,40 +602,21 @@ const ChessGame: React.FC = () => {
             </button>
           ) : (
             <div style={{ display: 'flex', gap: '10px' }}>
-              {gameState.gameMode === 'manual' && (
-                <button
-                  onClick={nextMove}
-                  disabled={gameState.isGameOver || gameState.isThinking}
-                  style={{
-                    padding: '10px 15px',
-                    fontSize: '14px',
-                    backgroundColor: gameState.isGameOver || gameState.isThinking ? '#ccc' : '#333',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '5px',
-                    cursor: gameState.isGameOver || gameState.isThinking ? 'not-allowed' : 'pointer'
-                  }}
-                >
-                  {gameState.awaitingDrawResponse ? 'Respond to Draw' : 'Next Move'}
-                </button>
-              )}
-              {gameState.gameMode === 'auto' && (
-                <button
-                  onClick={togglePause}
-                  disabled={gameState.isGameOver}
-                  style={{
-                    padding: '10px 15px',
-                    fontSize: '14px',
-                    backgroundColor: gameState.isGameOver ? '#ccc' : '#333',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '5px',
-                    cursor: gameState.isGameOver ? 'not-allowed' : 'pointer'
-                  }}
-                >
-                  {gameState.isPaused ? 'Resume' : 'Pause'}
-                </button>
-              )}
+              <button
+                onClick={togglePause}
+                disabled={gameState.isGameOver}
+                style={{
+                  padding: '10px 15px',
+                  fontSize: '14px',
+                  backgroundColor: gameState.isGameOver ? '#ccc' : '#333',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '5px',
+                  cursor: gameState.isGameOver ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {gameState.isPaused ? 'Resume' : 'Pause'}
+              </button>
               <button
                 onClick={resetGame}
                 style={{
