@@ -37,6 +37,7 @@ interface GameState {
   awaitingDrawResponse: boolean;
   thinkingOutput: string;
   isStreaming: boolean;
+  errorMessage: string | null;
 }
 
 const formatTime = (milliseconds: number): string => {
@@ -71,12 +72,14 @@ const ChessGame: React.FC = () => {
     },
     awaitingDrawResponse: false,
     thinkingOutput: '',
-    isStreaming: false
+    isStreaming: false,
+    errorMessage: null
   });
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const thinkingOutputRef = useRef<string>('');
   const thinkingOutputBoxRef = useRef<HTMLDivElement>(null);
+  const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const makeMove = useCallback(async (model: string, player: 'white' | 'black') => {
     // Prevent duplicate calls
@@ -109,7 +112,8 @@ const ChessGame: React.FC = () => {
       ...prev, 
       isThinking: true,
       thinkingOutput: '',
-      isStreaming: supportsStreaming
+      isStreaming: supportsStreaming,
+      errorMessage: null
     }));
     
     // Reset thinking output ref
@@ -280,7 +284,21 @@ const ChessGame: React.FC = () => {
                           }
                         } catch (moveError) {
                           console.error('Error making move:', data.move, moveError);
-                          return { ...prevState, isThinking: false, isStreaming: false };
+                          
+                          // Set timeout to clear error message after 3 seconds
+                          if (errorTimeoutRef.current) {
+                            clearTimeout(errorTimeoutRef.current);
+                          }
+                          errorTimeoutRef.current = setTimeout(() => {
+                            setGameState(prev => ({ ...prev, errorMessage: null }));
+                          }, 5000);
+                          
+                          return { 
+                            ...prevState, 
+                            isThinking: false, 
+                            isStreaming: false, 
+                            errorMessage: `Invalid move ${data.move} by ${player === 'white' ? 'White' : 'Black'} (${model}), retrying request`
+                          };
                         }
                       }
 
@@ -438,7 +456,8 @@ const ChessGame: React.FC = () => {
       },
       awaitingDrawResponse: false,
       thinkingOutput: '',
-      isStreaming: false
+      isStreaming: false,
+      errorMessage: null
     }));
   }, [gameState.whiteModel, gameState.blackModel]);
 
@@ -476,6 +495,12 @@ const ChessGame: React.FC = () => {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
+    
+    // Clear error timeout
+    if (errorTimeoutRef.current) {
+      clearTimeout(errorTimeoutRef.current);
+      errorTimeoutRef.current = null;
+    }
 
     setGameState({
       game: new Chess(),
@@ -500,7 +525,8 @@ const ChessGame: React.FC = () => {
       },
       awaitingDrawResponse: false,
       thinkingOutput: '',
-      isStreaming: false
+      isStreaming: false,
+      errorMessage: null
     });
   };
 
@@ -633,7 +659,7 @@ const ChessGame: React.FC = () => {
                   style={{
                     padding: '10px 15px',
                     fontSize: '14px',
-                    backgroundColor: gameState.isGameOver ? '#ccc' : (gameState.isPaused ? '#FF9800' : '#2196F3'),
+                    backgroundColor: gameState.isGameOver ? '#ccc' : '#333',
                     color: 'white',
                     border: 'none',
                     borderRadius: '5px',
@@ -647,8 +673,8 @@ const ChessGame: React.FC = () => {
                 onClick={resetGame}
                 style={{
                   padding: '10px 20px',
-                  fontSize: '16px',
-                  backgroundColor: '#f44336',
+                  fontSize: '14px',
+                  backgroundColor: '#333',
                   color: 'white',
                   border: 'none',
                   borderRadius: '5px',
@@ -724,6 +750,21 @@ const ChessGame: React.FC = () => {
                 {gameState.thinkingOutput || 'Waiting for model to think...'}
               </pre>
             </div>
+          </div>
+        )}
+        {gameState.errorMessage && (
+          <div style={{ 
+            fontSize: '16px', 
+            color: '#f44336',
+            fontWeight: 'bold',
+            backgroundColor: '#ffebee',
+            padding: '10px',
+            borderRadius: '8px',
+            border: '2px solid #f44336',
+            margin: '10px 0',
+            textAlign: 'center'
+          }}>
+            ⚠️ {gameState.errorMessage}
           </div>
         )}
         {gameState.drawOffer.offered && !gameState.isThinking && (
