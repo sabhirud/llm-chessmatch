@@ -4,6 +4,8 @@ import ChessBoard from './ChessBoard';
 import ModelSelector from './ModelSelector';
 import CapturedPiecesRow from './CapturedPieces';
 
+const IS_DEBUG = process.env.REACT_APP_DEBUG === 'true';
+
 const MODELS = [
   'claude-opus-4-20250514',
   'claude-sonnet-4-20250514',
@@ -103,7 +105,7 @@ const ChessGame: React.FC = () => {
     const isOpenAIModel = model === 'o4-mini';
     const supportsStreaming = isAnthropicModel || isGeminiModel || isGrokModel || isOpenAIModel;
     
-    console.log('Starting move for', player, 'with history:', currentHistory);
+    if (IS_DEBUG) console.log('Starting move for', player, 'with history:', currentHistory);
     
     // Set initial thinking state and clear previous thinking output
     // Don't clear error message if there's currently one showing (let the timeout handle it)
@@ -234,14 +236,14 @@ const ChessGame: React.FC = () => {
                           newGame.move(move);
                         }
                         
-                        console.log('Before move - History:', prevState.game.history());
-                        console.log('Making move:', data.move);
+                        if (IS_DEBUG) console.log('Before move - History:', prevState.game.history());
+                        if (IS_DEBUG) console.log('Making move:', data.move);
                         
                         try {
                           const move = newGame.move(data.move);
                           
                           if (move) {
-                            console.log('After move - History:', newGame.history());
+                            if (IS_DEBUG) console.log('After move - History:', newGame.history());
                             
                             const isGameOver = newGame.isGameOver();
                             let gameResult = null;
@@ -278,11 +280,11 @@ const ChessGame: React.FC = () => {
                               moveTimes: updatedMoveTimes
                             };
                           } else {
-                            console.error('Invalid move returned:', data.move);
+                            if (IS_DEBUG) console.error('Invalid move returned:', data.move);
                             return { ...prevState, isThinking: false, isStreaming: false };
                           }
                         } catch (moveError) {
-                          console.error('Error making move:', data.move, moveError);
+                          if (IS_DEBUG) console.error('Error making move:', data.move, moveError);
                           
                           // Set timeout to clear error message after 3 seconds
                           if (errorTimeoutRef.current) {
@@ -296,7 +298,9 @@ const ChessGame: React.FC = () => {
                             ...prevState, 
                             isThinking: false, 
                             isStreaming: false, 
-                            errorMessage: `Invalid move by ${player === 'white' ? 'White' : 'Black'} (${model}): ${data.move}`
+                            errorMessage: IS_DEBUG 
+                              ? `Retrying request due to invalid move by ${player === 'white' ? 'White' : 'Black'} (${model}): ${data.move}`
+                              : `Retrying request due to invalid move by ${player === 'white' ? 'White' : 'Black'} (${model})`
                           };
                         }
                       }
@@ -305,13 +309,13 @@ const ChessGame: React.FC = () => {
                     });
                   }
                 } catch (e) {
-                  console.error('Error parsing SSE event:', e);
+                  if (IS_DEBUG) console.error('Error parsing SSE event:', e);
                 }
               }
             }
           }
         } catch (e) {
-          console.error('Error reading stream:', e);
+          if (IS_DEBUG) console.error('Error reading stream:', e);
         }
       }
     } catch (error) {
@@ -322,10 +326,10 @@ const ChessGame: React.FC = () => {
       
       // Don't update state if the request was aborted
       if (error instanceof Error && error.name === 'AbortError') {
-        console.log('Move request was cancelled');
+        if (IS_DEBUG) console.log('Move request was cancelled');
         return;
       }
-      console.error('Error making move:', error);
+      if (IS_DEBUG) console.error('Error making move:', error);
       setGameState(prevState => ({ ...prevState, isThinking: false, isStreaming: false }));
     }
   }, [gameState.isGameOver, gameState.isThinking, gameState.game]);
@@ -350,7 +354,7 @@ const ChessGame: React.FC = () => {
       const currentHistory = prev.game.history();
       const startTime = Date.now();
       
-      console.log('Getting draw response for', player, 'with history:', currentHistory);
+      if (IS_DEBUG) console.log('Getting draw response for', player, 'with history:', currentHistory);
 
       // Make API call
       (async () => {
@@ -417,10 +421,10 @@ const ChessGame: React.FC = () => {
         } catch (error) {
           // Don't update state if the request was aborted
           if (error instanceof Error && error.name === 'AbortError') {
-            console.log('Draw response request was cancelled');
+            if (IS_DEBUG) console.log('Draw response request was cancelled');
             return;
           }
-          console.error('Error getting draw response:', error);
+          if (IS_DEBUG) console.error('Error getting draw response:', error);
           setGameState(prevState => ({ 
             ...prevState, 
             isThinking: false,
