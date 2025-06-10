@@ -1,17 +1,17 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-import random
+from pydantic import BaseModel, validator
 import os
 import json
 import asyncio
-from typing import List, Dict, Any, AsyncGenerator
+from typing import List, AsyncGenerator
 from openai import OpenAI
 from anthropic import Anthropic
 from google import genai
 from google.genai import types
 
-CHESS_MOVE_PROMPT_TEMPLATE = """You are a chess engine tasked with finding the best valid move given a current board position and move history. 
+CHESS_MOVE_PROMPT_TEMPLATE = """You are a chess engine tasked with finding the best valid move given a current board position and move history.
 
 <game_state_fen>
 {game_state}
@@ -61,6 +61,28 @@ Follow these steps to complete the task:
 Respond with either a move, "RESIGN", or "DRAW_OFFER". Do not respond with any other justification or commentary.
 """
 
+# Allowed models for both move generation and draw responses
+ALLOWED_MODELS = [
+    "claude-opus-4-20250514",
+    "claude-sonnet-4-20250514",
+    "o4-mini",
+    "gemini-2.5-pro-preview-05-06",
+    "gemini-2.5-flash-preview-05-20",
+    "grok-3-mini",
+]
+
+
+class MoveRequest(BaseModel):
+    model: str
+    game_state: str
+    move_history: List[str]
+
+    @validator("model")
+    def validate_model(cls, value: str) -> str:
+        if value not in ALLOWED_MODELS:
+            raise ValueError(f"Only {', '.join(ALLOWED_MODELS)} models are allowed")
+        return value
+
 app = FastAPI()
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 
@@ -77,43 +99,24 @@ async def health_check():
     return {"status": "healthy", "message": "API is operational"}
 
 @app.post("/draw_response")
-async def draw_response(request: Dict[str, Any]):
-    # Validate required fields
-    if "model" not in request:
-        raise HTTPException(status_code=400, detail="Field 'model' is required")
-    if "game_state" not in request:
-        raise HTTPException(status_code=400, detail="Field 'game_state' is required")
-    if "move_history" not in request:
-        raise HTTPException(status_code=400, detail="Field 'move_history' is required")
-    
-    # Validate model
-    allowed_models = ["claude-opus-4-20250514", "claude-sonnet-4-20250514", "o4-mini", "gemini-2.5-pro-preview-05-06", "gemini-2.5-flash-preview-05-20", "grok-3-mini"]
-    if request["model"] not in allowed_models:
-        raise HTTPException(status_code=400, detail=f"Only {', '.join(allowed_models)} models are allowed")
-    
-    # Validate types
-    if not isinstance(request["game_state"], str):
-        raise HTTPException(status_code=400, detail="Field 'game_state' must be a string")
-    if not isinstance(request["move_history"], list):
-        raise HTTPException(status_code=400, detail="Field 'move_history' must be a list")
-    
-    move_history_str = ", ".join(request["move_history"]) if request["move_history"] else "No moves yet"
+async def draw_response(request: MoveRequest):
+    move_history_str = ", ".join(request.move_history) if request.move_history else "No moves yet"
     
     prompt = f"""You are a chess AI. Your opponent has offered you a draw.
 
-    Game State (FEN): {request["game_state"]}
+    Game State (FEN): {request.game_state}
     Move History: {move_history_str}
 
     Respond with either "ACCEPT" to accept the draw offer or "DECLINE" to decline and continue playing."""
 
-    if request["model"] in ["claude-opus-4-20250514", "claude-sonnet-4-20250514"]:
-        response = await call_anthropic_api(request["model"], prompt)
-    elif request["model"] == "o4-mini":
-        response = await call_openai_api(request["model"], prompt)
-    elif request["model"] in ["gemini-2.5-pro-preview-05-06", "gemini-2.5-flash-preview-05-20"]:
-        response = await call_gemini_api(request["model"], prompt)
-    elif request["model"] == "grok-3-mini":
-        response = await call_xai_api(request["model"], prompt)
+    if request.model in ["claude-opus-4-20250514", "claude-sonnet-4-20250514"]:
+        response = await call_anthropic_api(request.model, prompt)
+    elif request.model == "o4-mini":
+        response = await call_openai_api(request.model, prompt)
+    elif request.model in ["gemini-2.5-pro-preview-05-06", "gemini-2.5-flash-preview-05-20"]:
+        response = await call_gemini_api(request.model, prompt)
+    elif request.model == "grok-3-mini":
+        response = await call_xai_api(request.model, prompt)
     
     # Handle draw response
     if "move" in response:
@@ -135,90 +138,52 @@ async def draw_response(request: Dict[str, Any]):
         return {"action": "draw_decline", "thinking_tokens": response.get("thinking_tokens", 0)}
 
 @app.post("/get_move_stream")
-async def get_move_stream(request: Dict[str, Any]):
-    # Validate required fields
-    if "model" not in request:
-        raise HTTPException(status_code=400, detail="Field 'model' is required")
-    if "game_state" not in request:
-        raise HTTPException(status_code=400, detail="Field 'game_state' is required")
-    if "move_history" not in request:
-        raise HTTPException(status_code=400, detail="Field 'move_history' is required")
-    
-    # Validate model
-    allowed_models = ["claude-opus-4-20250514", "claude-sonnet-4-20250514", "o4-mini", "gemini-2.5-pro-preview-05-06", "gemini-2.5-flash-preview-05-20", "grok-3-mini"]
-    if request["model"] not in allowed_models:
-        raise HTTPException(status_code=400, detail=f"Only {', '.join(allowed_models)} models are allowed")
-    
-    # Validate types
-    if not isinstance(request["game_state"], str):
-        raise HTTPException(status_code=400, detail="Field 'game_state' must be a string")
-    if not isinstance(request["move_history"], list):
-        raise HTTPException(status_code=400, detail="Field 'move_history' must be a list")
-    
-    move_history_str = ", ".join(request["move_history"]) if request["move_history"] else "No moves yet"
-    
+async def get_move_stream(request: MoveRequest):
+    move_history_str = ", ".join(request.move_history) if request.move_history else "No moves yet"
+
     prompt = CHESS_MOVE_PROMPT_TEMPLATE.format(
-        game_state=request["game_state"],
+        game_state=request.game_state,
         move_history=move_history_str
     )
 
-    if request["model"] in ["claude-opus-4-20250514", "claude-sonnet-4-20250514"]:
+    if request.model in ["claude-opus-4-20250514", "claude-sonnet-4-20250514"]:
         return StreamingResponse(
-            stream_anthropic_move(request["model"], prompt),
+            stream_anthropic_move(request.model, prompt),
             media_type="text/event-stream"
         )
-    elif request["model"] in ["gemini-2.5-pro-preview-05-06", "gemini-2.5-flash-preview-05-20"]:
+    elif request.model in ["gemini-2.5-pro-preview-05-06", "gemini-2.5-flash-preview-05-20"]:
         return StreamingResponse(
-            stream_gemini_move(request["model"], prompt),
+            stream_gemini_move(request.model, prompt),
             media_type="text/event-stream"
         )
-    elif request["model"] == "grok-3-mini":
+    elif request.model == "grok-3-mini":
         return StreamingResponse(
-            stream_grok_move(request["model"], prompt),
+            stream_grok_move(request.model, prompt),
             media_type="text/event-stream"
         )
-    elif request["model"] == "o4-mini":
+    elif request.model == "o4-mini":
         return StreamingResponse(
-            stream_openai_move(request["model"], prompt),
+            stream_openai_move(request.model, prompt),
             media_type="text/event-stream"
         )
 
 @app.post("/get_move")
-async def get_move(request: Dict[str, Any]):
-    # Validate required fields
-    if "model" not in request:
-        raise HTTPException(status_code=400, detail="Field 'model' is required")
-    if "game_state" not in request:
-        raise HTTPException(status_code=400, detail="Field 'game_state' is required")
-    if "move_history" not in request:
-        raise HTTPException(status_code=400, detail="Field 'move_history' is required")
-    
-    # Validate model
-    allowed_models = ["claude-opus-4-20250514", "claude-sonnet-4-20250514", "o4-mini", "gemini-2.5-pro-preview-05-06", "gemini-2.5-flash-preview-05-20", "grok-3-mini"]
-    if request["model"] not in allowed_models:
-        raise HTTPException(status_code=400, detail=f"Only {', '.join(allowed_models)} models are allowed")
-    
-    # Validate types
-    if not isinstance(request["game_state"], str):
-        raise HTTPException(status_code=400, detail="Field 'game_state' must be a string")
-    if not isinstance(request["move_history"], list):
-        raise HTTPException(status_code=400, detail="Field 'move_history' must be a list")
-    
-    move_history_str = ", ".join(request["move_history"]) if request["move_history"] else "No moves yet"
-    
+async def get_move(request: MoveRequest):
+    move_history_str = ", ".join(request.move_history) if request.move_history else "No moves yet"
+
     prompt = CHESS_MOVE_PROMPT_TEMPLATE.format(
-        game_state=request["game_state"],
+        game_state=request.game_state,
         move_history=move_history_str
     )
 
-    if request["model"] in ["claude-opus-4-20250514", "claude-sonnet-4-20250514"]:
-        return await call_anthropic_api(request["model"], prompt)
-    elif request["model"] == "o4-mini":
-        return await call_openai_api(request["model"], prompt)
-    elif request["model"] in ["gemini-2.5-pro-preview-05-06", "gemini-2.5-flash-preview-05-20"]:
-        return await call_gemini_api(request["model"], prompt)
-    elif request["model"] == "grok-3-mini":
-        return await call_xai_api(request["model"], prompt)
+    if request.model in ["claude-opus-4-20250514", "claude-sonnet-4-20250514"]:
+        return await call_anthropic_api(request.model, prompt)
+    elif request.model == "o4-mini":
+        return await call_openai_api(request.model, prompt)
+    elif request.model in ["gemini-2.5-pro-preview-05-06", "gemini-2.5-flash-preview-05-20"]:
+        return await call_gemini_api(request.model, prompt)
+    elif request.model == "grok-3-mini":
+        return await call_xai_api(request.model, prompt)
 
 async def call_anthropic_api(model: str, prompt: str):
     api_key = os.getenv("ANTHROPIC_API_KEY")
