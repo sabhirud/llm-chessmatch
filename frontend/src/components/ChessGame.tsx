@@ -39,6 +39,13 @@ interface GameState {
   thinkingOutput: string;
   isStreaming: boolean;
   errorMessage: string | null;
+  lastMove: {
+    from: string;
+    to: string;
+    color: 'w' | 'b';
+    piece: string;
+    captured?: string;
+  } | null;
 }
 
 const formatTime = (milliseconds: number): string => {
@@ -73,7 +80,8 @@ const ChessGame: React.FC = () => {
     awaitingDrawResponse: false,
     thinkingOutput: '',
     isStreaming: false,
-    errorMessage: null
+    errorMessage: null,
+    lastMove: null
   });
 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -267,18 +275,25 @@ const ChessGame: React.FC = () => {
                             const updatedThinkingTokens = [...prevState.moveThinkingTokens, data.thinking_tokens || 0];
                             const updatedMoveTimes = [...prevState.moveTimes, moveTime];
 
-                            return {
-                              ...prevState,
-                              game: newGame,
-                              currentPlayer: prevState.currentPlayer === 'white' ? 'black' : 'white',
-                              isGameOver,
-                              gameResult,
-                              isThinking: false,
-                              isStreaming: false,
-                              capturedPieces: updatedCapturedPieces,
-                              moveThinkingTokens: updatedThinkingTokens,
-                              moveTimes: updatedMoveTimes
-                            };
+                              return {
+                                ...prevState,
+                                game: newGame,
+                                currentPlayer: prevState.currentPlayer === 'white' ? 'black' : 'white',
+                                isGameOver,
+                                gameResult,
+                                isThinking: false,
+                                isStreaming: false,
+                                capturedPieces: updatedCapturedPieces,
+                                moveThinkingTokens: updatedThinkingTokens,
+                                moveTimes: updatedMoveTimes,
+                                lastMove: {
+                                  from: move.from,
+                                  to: move.to,
+                                  color: move.color as 'w' | 'b',
+                                  piece: move.piece,
+                                  captured: move.captured
+                                }
+                              };
                           } else {
                             if (IS_DEBUG) console.error('Invalid move returned:', data.move);
                             return { ...prevState, isThinking: false, isStreaming: false };
@@ -528,7 +543,8 @@ const ChessGame: React.FC = () => {
       awaitingDrawResponse: false,
       thinkingOutput: '',
       isStreaming: false,
-      errorMessage: null
+      errorMessage: null,
+      lastMove: null
     });
   };
 
@@ -751,10 +767,11 @@ const ChessGame: React.FC = () => {
             capturedBy="black"
           />
           
-          <ChessBoard 
-            game={gameState.game}
-            isGameStarted={gameState.isGameStarted}
-          />
+            <ChessBoard
+              game={gameState.game}
+              isGameStarted={gameState.isGameStarted}
+              lastMove={gameState.lastMove}
+            />
           
           <CapturedPiecesRow 
             pieces={gameState.capturedPieces.white} 
